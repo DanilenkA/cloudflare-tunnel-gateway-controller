@@ -1,0 +1,4 @@
+# Code owners for cloudflare-tunnel-gateway-controller
+# These owners will be automatically requested for review when someone opens a pull request
+
+* @lexfrei
