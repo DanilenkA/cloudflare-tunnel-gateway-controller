@@ -6,3 +6,6 @@ MD013: false
 
 # Allow inline HTML for badges, special formatting
 MD033: false
+
+# Disable table column style rule - compact style is fine
+MD060: false

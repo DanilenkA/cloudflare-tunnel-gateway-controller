@@ -69,9 +69,7 @@ jobs:
       - name: Run chart-testing (lint)
         run: |
           echo "Running chart-testing lint..."
-          ct lint --charts charts/cloudflare-tunnel-gateway-controller \
-            --chart-yaml-schema /dev/null \
-            --lint-conf /dev/null
+          ct lint --charts charts/cloudflare-tunnel-gateway-controller
 
       - name: Run Artifact Hub Lint
         run: |
