@@ -14,15 +14,35 @@ Enables routing traffic through Cloudflare Tunnel using standard Gateway API res
 ## Prerequisites
 
 - Kubernetes cluster with Gateway API CRDs installed
-- Cloudflare account with Cloudflare Tunnel configured
+- Cloudflare account with a pre-created Cloudflare Tunnel
 - Cloudflare API token with tunnel permissions
+
+### Create Cloudflare Tunnel
+
+Before deploying the controller, you must create a Cloudflare Tunnel:
+
+1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+2. Navigate to **Networks** > **Tunnels**
+3. Click **Create a tunnel**
+4. Choose **Cloudflared** connector type
+5. Name your tunnel and save the **Tunnel ID** and **Tunnel Token**
+
+The controller manages tunnel ingress configuration via API. You can either:
+
+- Let the controller deploy cloudflared automatically (`--manage-cloudflared=true`)
+- Deploy cloudflared yourself using the tunnel token
 
 ### Cloudflare API Token Permissions
 
-Create an API token with the following permissions:
+Create an API token at [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) with the following permissions:
 
-- Account > Cloudflare Tunnel > Edit
-- Account > Cloudflare Tunnel > Read
+| Scope | Permission | Access |
+|-------|------------|--------|
+| Account | Cloudflare Tunnel | Edit |
+| Account | Cloudflare Tunnel | Read |
+| Account | Account Settings | Read |
+
+The **Account Settings: Read** permission is required for auto-detecting the Account ID when not explicitly provided.
 
 ## Installation
 
@@ -89,6 +109,59 @@ spec:
 
 The controller will automatically update Cloudflare Tunnel configuration. Changes are applied instantly without restarting cloudflared.
 
+**Important:** On startup, the controller performs a full synchronization of the tunnel configuration. This means:
+
+- All existing ingress rules in the tunnel are replaced with rules derived from current HTTPRoutes
+- Any rules created outside of this controller will be removed
+- This ensures the tunnel configuration is always consistent with Kubernetes resources
+
+## External-DNS Integration
+
+The controller integrates with [external-dns](https://github.com/kubernetes-sigs/external-dns) for automatic DNS record creation.
+
+The controller automatically sets `status.addresses` on the Gateway with the tunnel CNAME (`TUNNEL_ID.cfargotunnel.com`). External-dns reads this value as the DNS target.
+
+### Gateway Configuration
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cloudflare-tunnel
+  namespace: cloudflare-tunnel-system
+spec:
+  gatewayClassName: cloudflare-tunnel
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+### HTTPRoute Configuration
+
+Add provider-specific annotations on HTTPRoute:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+  annotations:
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+spec:
+  parentRefs:
+    - name: cloudflare-tunnel
+      namespace: cloudflare-tunnel-system
+      sectionName: http  # Must match listener name
+  hostnames:
+    - app.example.com
+```
+
+**Important:** The `sectionName` in parentRef must match the listener name in Gateway for external-dns to properly associate routes with the gateway.
+
 ## Configuration
 
 | Flag | Environment Variable | Default | Description |
@@ -108,6 +181,7 @@ The controller will automatically update Cloudflare Tunnel configuration. Change
 | `--cloudflared-namespace` | `CF_CLOUDFLARED_NAMESPACE` | `cloudflare-tunnel-system` | Namespace for cloudflared |
 | `--cloudflared-protocol` | `CF_CLOUDFLARED_PROTOCOL` | | Transport protocol (auto, quic, http2) |
 | `--awg-secret-name` | `CF_AWG_SECRET_NAME` | | AWG config secret for sidecar |
+| `--awg-interface-name` | `CF_AWG_INTERFACE_NAME` | | AWG interface name (must match config file name without .conf) |
 
 ## Gateway API Support
 
