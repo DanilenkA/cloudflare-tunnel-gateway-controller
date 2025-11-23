@@ -11,6 +11,7 @@ type CloudflaredValues struct {
 // SidecarConfig holds AWG sidecar configuration.
 type SidecarConfig struct {
 	ConfigSecretName string
+	InterfaceName    string // AWG interface name (derived from config file name, e.g., "cftunnel" for cftunnel.conf)
 }
 
 // BuildValues converts CloudflaredValues to Helm values map.
@@ -36,12 +37,17 @@ func (v *CloudflaredValues) BuildValues() map[string]any {
 
 //nolint:funlen // sidecar config structure is verbose but readable
 func buildSidecarValues(sidecar *SidecarConfig) map[string]any {
+	interfaceName := sidecar.InterfaceName
+	if interfaceName == "" {
+		interfaceName = "wg0"
+	}
+
 	return map[string]any{
-		"initContainers": []map[string]any{
-			{
+		"initContainers": []any{
+			map[string]any{
 				"name":  "wait-for-awg",
 				"image": "busybox:1.36",
-				"command": []string{
+				"command": []any{
 					"sh", "-c", "echo 'Waiting for AWG...' && sleep 5 && echo 'Done'",
 				},
 				"securityContext": map[string]any{
@@ -50,8 +56,8 @@ func buildSidecarValues(sidecar *SidecarConfig) map[string]any {
 				},
 			},
 		},
-		"containers": []map[string]any{
-			{
+		"containers": []any{
+			map[string]any{
 				"name":            "amneziawg",
 				"image":           "ghcr.io/zeozeozeo/amneziawg-client:latest",
 				"imagePullPolicy": "IfNotPresent",
@@ -62,13 +68,22 @@ func buildSidecarValues(sidecar *SidecarConfig) map[string]any {
 					"runAsUser":    0,
 					"runAsNonRoot": false,
 				},
-				"volumeMounts": []map[string]any{
-					{
+				"lifecycle": map[string]any{
+					"preStop": map[string]any{
+						"exec": map[string]any{
+							"command": []any{
+								"sh", "-c", "ip link delete " + interfaceName + " 2>/dev/null || true",
+							},
+						},
+					},
+				},
+				"volumeMounts": []any{
+					map[string]any{
 						"name":      "awg-config",
 						"mountPath": "/config",
 						"readOnly":  true,
 					},
-					{
+					map[string]any{
 						"name":      "tun-device",
 						"mountPath": "/dev/net/tun",
 					},
@@ -84,14 +99,14 @@ func buildSidecarValues(sidecar *SidecarConfig) map[string]any {
 				},
 			},
 		},
-		"extraVolumes": []map[string]any{
-			{
+		"extraVolumes": []any{
+			map[string]any{
 				"name": "awg-config",
 				"secret": map[string]any{
 					"secretName": sidecar.ConfigSecretName,
 				},
 			},
-			{
+			map[string]any{
 				"name": "tun-device",
 				"hostPath": map[string]any{
 					"path": "/dev/net/tun",

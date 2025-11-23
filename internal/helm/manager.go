@@ -157,7 +157,7 @@ func (m *Manager) Install(
 	install := action.NewInstall(cfg)
 	install.ReleaseName = releaseName
 	install.Namespace = namespace
-	install.CreateNamespace = true
+	install.CreateNamespace = false
 	install.Wait = true
 	install.Timeout = installTimeout
 
