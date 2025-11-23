@@ -1,25 +1,21 @@
 name: PR Checks and Build
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, closed]
+  pull_request:
+    types: [opened, synchronize]
 
 permissions:
   contents: read
-  packages: write
   pull-requests: write
 
 jobs:
   # Fast checks: linting and tests
   lint:
     name: Lint
-    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -40,13 +36,10 @@ jobs:
 
   test:
     name: Test
-    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -66,8 +59,7 @@ jobs:
 
   # Build containers only after lint and test succeed
   build-and-push:
-    name: Build and Push
-    if: github.event.action != 'closed'
+    name: Build and Push (${{ matrix.arch }})
     needs: [lint, test]
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -75,159 +67,59 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
+            arch: amd64
             runner: ubuntu-24.04
           - platform: linux/arm64
+            arch: arm64
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Prepare platform identifier
-        id: platform
-        run: |
-          platform="${{ matrix.platform }}"
-          echo "pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract README description
-        id: readme
-        run: |
-          DESCRIPTION=$(sed -n '7p' README.md | sed 's/\[//' | sed 's/\]([^)]*)//g')
-          echo "description=${DESCRIPTION}" >> "$GITHUB_OUTPUT"
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: type=ref,event=pr
-          labels: |
-            org.opencontainers.image.description=${{ steps.readme.outputs.description }}
-
-      - name: Build and Push by Digest
-        id: build
+      - name: Build and Push to ttl.sh
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Containerfile
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=build-${{ steps.platform.outputs.pair }}
-          cache-to: type=gha,scope=build-${{ steps.platform.outputs.pair }},mode=max
-          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          tags: ttl.sh/cf-tunnel-gateway-ctrl:pr-${{ github.event.pull_request.number }}-${{ matrix.arch }}-1d
+          cache-from: type=gha,scope=build-${{ matrix.arch }}
+          cache-to: type=gha,scope=build-${{ matrix.arch }},mode=max
           build-args: |
-            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
-            REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v5
-        with:
-          name: digests-${{ steps.platform.outputs.pair }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  # Merge all digests into multi-arch manifest
-  merge-manifests:
-    name: Merge Manifests
-    if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v6
-        with:
-          pattern: digests-*
-          path: /tmp/digests
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract README description
-        id: readme
-        run: |
-          DESCRIPTION=$(sed -n '7p' README.md | sed 's/\[//' | sed 's/\]([^)]*)//g')
-          echo "description=${DESCRIPTION}" >> "$GITHUB_OUTPUT"
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: type=ref,event=pr
-          labels: |
-            org.opencontainers.image.description=${{ steps.readme.outputs.description }}
-
-      - name: Create manifest list and push
-        working-directory: /tmp/digests
-        run: |
-          set -euo pipefail
-
-          # Build tag arguments array (-t and tag as separate elements)
-          mapfile -t tag_args < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-
-          # Build image references array
-          images=()
-          for digest_file in *; do
-            [[ -f "$digest_file" ]] || continue
-            images+=("ghcr.io/${{ github.repository }}@sha256:${digest_file}")
-          done
-
-          # Create multi-arch manifest
-          docker buildx imagetools create "${tag_args[@]}" "${images[@]}"
-
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
+            VERSION=pr-${{ github.event.pull_request.number }}
+            REVISION=${{ github.event.pull_request.head.sha }}
 
       - name: Generate build summary
         run: |
-          IMAGE_TAG="ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}"
-          MANIFEST_DIGEST=$(docker buildx imagetools inspect "${IMAGE_TAG}" --format '{{.Manifest.Digest}}')
+          IMAGE_TAG="ttl.sh/cf-tunnel-gateway-ctrl:pr-${{ github.event.pull_request.number }}-${{ matrix.arch }}-1d"
 
           {
-            echo "## PR Container Image Built"
+            echo "## PR Container Image Built (${{ matrix.arch }})"
             echo ""
             echo "### Image Tag"
             echo "- \`${IMAGE_TAG}\`"
             echo ""
-            echo "### Platforms"
-            docker buildx imagetools inspect "${IMAGE_TAG}" --format '{{range .Manifest.Manifests}}- {{.Platform.OS}}/{{.Platform.Architecture}}{{if .Platform.Variant}}/{{.Platform.Variant}}{{end}}{{"\n"}}{{end}}'
-            echo ""
-            echo "### Manifest Digest"
-            echo "\`${MANIFEST_DIGEST}\`"
+            echo "### Platform"
+            echo "- ${{ matrix.platform }}"
             echo ""
             echo "### Pull Command"
             echo '```bash'
-            echo "docker pull ${IMAGE_TAG}"
+            echo "podman pull ${IMAGE_TAG}"
             echo '```'
+            echo ""
+            echo "> **Note:** Image expires in 24 hours (ttl.sh)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Comment on PR after all builds complete
+  notify:
+    name: Notify PR
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
       - name: Check if first build
         id: first_build
         uses: actions/github-script@v8
@@ -260,59 +152,12 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            const prNumber = context.payload.pull_request.number;
+            const baseTag = `ttl.sh/cf-tunnel-gateway-ctrl:pr-${prNumber}`;
+
             github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
+              issue_number: prNumber,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `Container image is now available!\n\n**Image:** \`ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}\`\n\n**Platforms:** linux/amd64, linux/arm64\n\n**Note:** This image will be automatically rebuilt on every commit to this PR. You can always pull the latest version using the command below.\n\n**Pull command:**\n\`\`\`bash\npodman pull ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}\n\`\`\``
+              body: `Container images are now available!\n\n**Images:**\n- \`${baseTag}-amd64-1d\`\n- \`${baseTag}-arm64-1d\`\n\n**Pull commands:**\n\`\`\`bash\n# AMD64\npodman pull ${baseTag}-amd64-1d\n\n# ARM64\npodman pull ${baseTag}-arm64-1d\n\`\`\`\n\n> **Note:** Images are rebuilt on every commit and expire after 24 hours (hosted on ttl.sh).`
             })
-
-  # Clean up PR image when PR is closed
-  cleanup-pr-image:
-    name: Cleanup PR Image
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install crane
-        run: |
-          curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz crane
-          sudo mv crane /usr/local/bin/
-          crane version
-
-      - name: Delete PR container tag
-        run: |
-          IMAGE="ghcr.io/${{ github.repository }}"
-          TAG="pr-${{ github.event.pull_request.number }}"
-
-          echo "Removing tag: ${IMAGE}:${TAG}"
-
-          # Login to GHCR
-          echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u ${{ github.actor }} --password-stdin
-
-          # Delete tag (not the image, just untag)
-          if crane delete "${IMAGE}:${TAG}" 2>&1; then
-            echo "Successfully removed tag ${TAG}"
-            echo "Image data will be garbage collected automatically"
-          else
-            echo "Tag ${TAG} not found or already removed"
-          fi
-
-      - name: Remove Container Available label
-        uses: actions/github-script@v8
-        with:
-          script: |
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                name: 'Container Available'
-              });
-              console.log('Removed "Container Available" label');
-            } catch (error) {
-              if (error.status === 404) {
-                console.log('Label was not present on PR');
-              } else {
-                throw error;
-              }
-            }
