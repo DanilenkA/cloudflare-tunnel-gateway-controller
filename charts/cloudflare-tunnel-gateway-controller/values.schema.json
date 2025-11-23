@@ -6,12 +6,10 @@
     "cloudflare": {
       "type": "object",
       "description": "Cloudflare configuration",
-      "required": ["tunnelId"],
       "properties": {
         "tunnelId": {
           "type": "string",
-          "description": "Cloudflare Tunnel ID",
-          "minLength": 1
+          "description": "Cloudflare Tunnel ID (required at install time)"
         },
         "accountId": {
           "type": "string",
