@@ -21,6 +21,7 @@ const (
 	cloudflaredFinalizer = "cloudflare-tunnel.gateway.networking.k8s.io/cloudflared"
 	cloudflaredRelease   = "cloudflared"
 	defaultCloudflaredNS = "cloudflare-tunnel-system"
+	cfArgotunnelSuffix   = ".cfargotunnel.com"
 )
 
 type GatewayReconciler struct {
@@ -29,13 +30,15 @@ type GatewayReconciler struct {
 	Scheme           *runtime.Scheme
 	GatewayClassName string
 	ControllerName   string
+	TunnelID         string
 
 	// Helm management
-	HelmManager   *helm.Manager
-	TunnelToken   string
-	CloudflaredNS string
-	Protocol      string
-	AWGSecretName string
+	HelmManager      *helm.Manager
+	TunnelToken      string
+	CloudflaredNS    string
+	Protocol         string
+	AWGSecretName    string
+	AWGInterfaceName string
 }
 
 //nolint:noinlineerr // controller reconcile logic
@@ -202,6 +205,7 @@ func (r *GatewayReconciler) buildCloudflaredValues() map[string]any {
 	if r.AWGSecretName != "" {
 		cloudflaredValues.Sidecar = &helm.SidecarConfig{
 			ConfigSecretName: r.AWGSecretName,
+			InterfaceName:    r.AWGInterfaceName,
 		}
 	}
 
@@ -211,6 +215,15 @@ func (r *GatewayReconciler) buildCloudflaredValues() map[string]any {
 //nolint:funcorder,funlen // status update logic
 func (r *GatewayReconciler) updateStatus(ctx context.Context, gateway *gatewayv1.Gateway) error {
 	now := metav1.Now()
+
+	attachedRoutes := r.countAttachedRoutes(ctx, gateway)
+
+	gateway.Status.Addresses = []gatewayv1.GatewayStatusAddress{
+		{
+			Type:  ptr(gatewayv1.HostnameAddressType),
+			Value: r.TunnelID + cfArgotunnelSuffix,
+		},
+	}
 
 	gateway.Status.Conditions = []metav1.Condition{
 		{
@@ -242,7 +255,7 @@ func (r *GatewayReconciler) updateStatus(ctx context.Context, gateway *gatewayv1
 					Kind:  "HTTPRoute",
 				},
 			},
-			AttachedRoutes: 0,
+			AttachedRoutes: attachedRoutes[listener.Name],
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(gatewayv1.ListenerConditionAccepted),
@@ -260,6 +273,14 @@ func (r *GatewayReconciler) updateStatus(ctx context.Context, gateway *gatewayv1
 					Reason:             string(gatewayv1.ListenerReasonProgrammed),
 					Message:            "Listener programmed",
 				},
+				{
+					Type:               string(gatewayv1.ListenerConditionResolvedRefs),
+					Status:             metav1.ConditionTrue,
+					ObservedGeneration: gateway.Generation,
+					LastTransitionTime: now,
+					Reason:             string(gatewayv1.ListenerReasonResolvedRefs),
+					Message:            "References resolved",
+				},
 			},
 		})
 	}
@@ -274,10 +295,71 @@ func (r *GatewayReconciler) updateStatus(ctx context.Context, gateway *gatewayv1
 	return nil
 }
 
+//nolint:funcorder // helper method for status
+func (r *GatewayReconciler) countAttachedRoutes(
+	ctx context.Context,
+	gateway *gatewayv1.Gateway,
+) map[gatewayv1.SectionName]int32 {
+	result := make(map[gatewayv1.SectionName]int32)
+
+	for _, listener := range gateway.Spec.Listeners {
+		result[listener.Name] = 0
+	}
+
+	var routeList gatewayv1.HTTPRouteList
+
+	err := r.List(ctx, &routeList)
+	if err != nil {
+		return result
+	}
+
+	for i := range routeList.Items {
+		route := &routeList.Items[i]
+
+		for _, ref := range route.Spec.ParentRefs {
+			if !r.refMatchesGateway(ref, gateway, route.Namespace) {
+				continue
+			}
+
+			if ref.SectionName != nil {
+				result[*ref.SectionName]++
+			} else {
+				for _, listener := range gateway.Spec.Listeners {
+					result[listener.Name]++
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+//nolint:funcorder // helper method
+func (r *GatewayReconciler) refMatchesGateway(
+	ref gatewayv1.ParentReference,
+	gateway *gatewayv1.Gateway,
+	routeNamespace string,
+) bool {
+	if string(ref.Name) != gateway.Name {
+		return false
+	}
+
+	refNamespace := routeNamespace
+	if ref.Namespace != nil {
+		refNamespace = string(*ref.Namespace)
+	}
+
+	return refNamespace == gateway.Namespace
+}
+
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	//nolint:wrapcheck // controller-runtime builder pattern
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.Gateway{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }

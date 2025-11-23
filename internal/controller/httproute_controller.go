@@ -19,6 +19,8 @@ import (
 	"github.com/lexfrei/cloudflare-tunnel-gateway-controller/internal/ingress"
 )
 
+const kindGateway = "Gateway"
+
 type HTTPRouteReconciler struct {
 	client.Client
 
@@ -58,7 +60,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 //nolint:funcorder,noinlineerr // private helper method
 func (r *HTTPRouteReconciler) isRouteForOurGateway(ctx context.Context, route *gatewayv1.HTTPRoute) bool {
 	for _, ref := range route.Spec.ParentRefs {
-		if ref.Kind != nil && *ref.Kind != "Gateway" {
+		if ref.Kind != nil && *ref.Kind != kindGateway {
 			continue
 		}
 
@@ -156,43 +158,56 @@ func (r *HTTPRouteReconciler) updateRouteStatus(
 		message = "Route accepted and programmed in Cloudflare Tunnel"
 	}
 
-	parentStatus := gatewayv1.RouteParentStatus{
-		ParentRef: gatewayv1.ParentReference{
-			Name: gatewayv1.ObjectName(r.GatewayClassName),
-		},
-		ControllerName: gatewayv1.GatewayController(r.ControllerName),
-		Conditions: []metav1.Condition{
-			{
-				Type:               string(gatewayv1.RouteConditionAccepted),
-				Status:             status,
-				ObservedGeneration: route.Generation,
-				LastTransitionTime: now,
-				Reason:             reason,
-				Message:            message,
-			},
-			{
-				Type:               string(gatewayv1.RouteConditionResolvedRefs),
-				Status:             metav1.ConditionTrue,
-				ObservedGeneration: route.Generation,
-				LastTransitionTime: now,
-				Reason:             string(gatewayv1.RouteReasonResolvedRefs),
-				Message:            "All references resolved",
-			},
-		},
-	}
+	route.Status.Parents = nil
 
-	found := false
-
-	for i, ps := range route.Status.Parents {
-		if ps.ControllerName == gatewayv1.GatewayController(r.ControllerName) {
-			route.Status.Parents[i] = parentStatus
-			found = true
-
-			break
+	for _, ref := range route.Spec.ParentRefs {
+		if ref.Kind != nil && *ref.Kind != kindGateway {
+			continue
 		}
-	}
 
-	if !found {
+		namespace := route.Namespace
+		if ref.Namespace != nil {
+			namespace = string(*ref.Namespace)
+		}
+
+		var gateway gatewayv1.Gateway
+		if err := r.Get(ctx, client.ObjectKey{Name: string(ref.Name), Namespace: namespace}, &gateway); err != nil {
+			continue
+		}
+
+		if gateway.Spec.GatewayClassName != gatewayv1.ObjectName(r.GatewayClassName) {
+			continue
+		}
+
+		parentStatus := gatewayv1.RouteParentStatus{
+			ParentRef: gatewayv1.ParentReference{
+				Group:       ref.Group,
+				Kind:        ref.Kind,
+				Namespace:   (*gatewayv1.Namespace)(&namespace),
+				Name:        ref.Name,
+				SectionName: ref.SectionName,
+			},
+			ControllerName: gatewayv1.GatewayController(r.ControllerName),
+			Conditions: []metav1.Condition{
+				{
+					Type:               string(gatewayv1.RouteConditionAccepted),
+					Status:             status,
+					ObservedGeneration: route.Generation,
+					LastTransitionTime: now,
+					Reason:             reason,
+					Message:            message,
+				},
+				{
+					Type:               string(gatewayv1.RouteConditionResolvedRefs),
+					Status:             metav1.ConditionTrue,
+					ObservedGeneration: route.Generation,
+					LastTransitionTime: now,
+					Reason:             string(gatewayv1.RouteReasonResolvedRefs),
+					Message:            "All references resolved",
+				},
+			},
+		}
+
 		route.Status.Parents = append(route.Status.Parents, parentStatus)
 	}
 
@@ -204,14 +219,40 @@ func (r *HTTPRouteReconciler) updateRouteStatus(
 }
 
 func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	//nolint:wrapcheck // controller-runtime builder pattern
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&gatewayv1.HTTPRoute{}).
 		Watches(
 			&gatewayv1.Gateway{},
 			handler.EnqueueRequestsFromMapFunc(r.findRoutesForGateway),
 		).
 		Complete(r)
+	if err != nil {
+		return errors.Wrap(err, "failed to setup httproute controller")
+	}
+
+	// Add startup runnable for initial sync
+	addErr := mgr.Add(r)
+	if addErr != nil {
+		return errors.Wrap(addErr, "failed to add startup sync runnable")
+	}
+
+	return nil
+}
+
+// Start implements manager.Runnable for startup sync.
+func (r *HTTPRouteReconciler) Start(ctx context.Context) error {
+	logger := slog.Default().With("component", "startup-sync")
+	logger.Info("performing startup sync of tunnel configuration")
+
+	_, err := r.syncAllRoutes(ctx)
+	if err != nil {
+		logger.Error("startup sync failed", "error", err)
+		// Don't return error - allow controller to start even if initial sync fails
+	} else {
+		logger.Info("startup sync completed successfully")
+	}
+
+	return nil
 }
 
 //nolint:noinlineerr // inline error handling for controller pattern
