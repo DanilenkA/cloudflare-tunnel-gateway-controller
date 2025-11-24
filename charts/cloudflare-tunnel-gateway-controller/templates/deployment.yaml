@@ -30,6 +30,7 @@ spec:
       priorityClassName: {{ .Values.priorityClassName }}
       {{- end }}
       serviceAccountName: {{ include "cf-tunnel-gw-ctrl.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -83,12 +84,22 @@ spec:
             - name: health
               containerPort: {{ .Values.service.healthPort }}
               protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.healthPort }}
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
           livenessProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.healthPort }}
             initialDelaySeconds: 15
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /readyz
@@ -100,12 +111,30 @@ spec:
             preStop:
               exec:
                 command:
-                  - sh
+                  - /bin/sh
                   - -c
-                  - ip link delete {{ .Values.awg.interfaceName | default "awg-cfd-gw-ctrl0" }} 2>/dev/null || true
+                  - |
+                    set -e
+                    interface="{{ .Values.awg.interfaceName | default "awg-cfd-gw-ctrl0" }}"
+                    if ip link show "$interface" > /dev/null 2>&1; then
+                      echo "Deleting AWG interface: $interface"
+                      ip link delete "$interface"
+                    else
+                      echo "AWG interface $interface not found, skipping deletion"
+                    fi
           {{- end }}
           resources:
+            {{- if .Values.resources }}
             {{- toYaml .Values.resources | nindent 12 }}
+            {{- else }}
+            # Recommended defaults for production
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

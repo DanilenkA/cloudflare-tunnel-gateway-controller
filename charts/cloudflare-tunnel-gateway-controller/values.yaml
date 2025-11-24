@@ -104,14 +104,18 @@ securityContext:
   readOnlyRootFilesystem: true
 
 # -- Container resource requests and limits
-# @default -- No resources specified
-resources: {}
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 50m
-  #   memory: 64Mi
+# @default -- See values.yaml for recommended production defaults
+# When resources is empty ({}), the chart will use recommended defaults.
+# Specify explicit values to override defaults.
+resources:
+  # Recommended resource limits for production
+  # Can be overridden for specific environments
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
 
 # -- Node selector for pod scheduling
 nodeSelector: {}
@@ -127,6 +131,9 @@ topologySpreadConstraints: []
 
 # -- Priority class name for pod scheduling priority
 priorityClassName: ""
+
+# -- Termination grace period in seconds for graceful shutdown
+terminationGracePeriodSeconds: 30
 
 # -- Number of controller replicas
 replicaCount: 1

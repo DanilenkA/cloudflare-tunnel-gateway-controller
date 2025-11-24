@@ -210,7 +210,7 @@ tests:
       - template: deployment.yaml
         equal:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[0]
-          value: "sh"
+          value: "/bin/sh"
       - template: deployment.yaml
         equal:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[1]
@@ -218,7 +218,15 @@ tests:
       - template: deployment.yaml
         matchRegex:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
-          pattern: "ip link delete awg-cfd-gw-ctrl0"
+          pattern: "set -e"
+      - template: deployment.yaml
+        matchRegex:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
+          pattern: 'interface="awg-cfd-gw-ctrl0"'
+      - template: deployment.yaml
+        matchRegex:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
+          pattern: "ip link delete"
 
   - it: should use custom interface name in preStop hook
     set:
@@ -232,7 +240,11 @@ tests:
       - template: deployment.yaml
         matchRegex:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
-          pattern: "ip link delete custom-awg0"
+          pattern: 'interface="custom-awg0"'
+      - template: deployment.yaml
+        matchRegex:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
+          pattern: "ip link delete"
 
   - it: should not add lifecycle hook when AWG is not enabled
     set:
@@ -781,3 +793,118 @@ tests:
         contains:
           path: spec.template.spec.containers[0].args
           content: "--log-format=text"
+
+  # New tests for Phase 2 fixes
+
+  # startupProbe tests (Issue #5)
+  - it: should have startupProbe configured
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /healthz
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.port
+          value: 8081
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].startupProbe.initialDelaySeconds
+          value: 0
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 5
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 12
+
+  # resource defaults tests (Issue #7)
+  - it: should have default resource limits when resources specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "200m"
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: "256Mi"
+
+  - it: should allow overriding default resources
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 250m
+          memory: 256Mi
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: "500m"
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: "512Mi"
+
+  # terminationGracePeriodSeconds tests (Issue #12)
+  - it: should have default terminationGracePeriodSeconds
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 30
+
+  - it: should allow custom terminationGracePeriodSeconds
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      terminationGracePeriodSeconds: 60
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 60
+
+  # livenessProbe timeouts (improvement)
+  - it: should have timeout and failureThreshold on livenessProbe
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 5
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 3
