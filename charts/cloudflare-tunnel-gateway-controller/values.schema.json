@@ -264,6 +264,43 @@
       "minimum": 1,
       "default": 1
     },
+    "podDisruptionBudget": {
+      "type": "object",
+      "description": "PodDisruptionBudget configuration for high availability",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "minAvailable": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+%$"},
+            {"type": "null"}
+          ],
+          "description": "Minimum number of available pods"
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+%$"},
+            {"type": "null"}
+          ],
+          "description": "Maximum number of unavailable pods"
+        },
+        "unhealthyPodEvictionPolicy": {
+          "type": ["string", "null"],
+          "enum": ["IfHealthyBudget", "AlwaysAllow", null],
+          "description": "Policy for evicting unhealthy pods (requires Kubernetes 1.26+)"
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 30,
+      "description": "Termination grace period in seconds"
+    },
     "service": {
       "type": "object",
       "properties": {

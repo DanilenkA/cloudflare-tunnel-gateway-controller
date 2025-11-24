@@ -138,6 +138,20 @@ terminationGracePeriodSeconds: 30
 # -- Number of controller replicas
 replicaCount: 1
 
+# -- PodDisruptionBudget configuration for high availability
+podDisruptionBudget:
+  # -- Enable PodDisruptionBudget
+  enabled: false
+  # -- Minimum number of available pods during disruptions
+  # Must not be used together with maxUnavailable
+  minAvailable: 1
+  # -- Maximum number of unavailable pods during disruptions
+  # Must not be used together with minAvailable
+  maxUnavailable: null
+  # -- Policy for evicting unhealthy pods (IfHealthyBudget, AlwaysAllow)
+  # Requires Kubernetes 1.26+
+  unhealthyPodEvictionPolicy: "IfHealthyBudget"
+
 # -- Service configuration
 service:
   # -- Service type
