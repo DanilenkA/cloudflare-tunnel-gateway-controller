@@ -43,7 +43,7 @@ awg:
   # -- Secret name containing AWG config
   secretName: ""
   # -- AWG interface name
-  interfaceName: ""
+  interfaceName: "awg-cfd-gw-ctrl0"
 
 # -- Container image configuration
 image:
