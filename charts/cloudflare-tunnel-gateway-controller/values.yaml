@@ -2,16 +2,22 @@
 
 # -- Cloudflare configuration
 cloudflare:
-  # -- Cloudflare Tunnel ID (required at install time)
+  # -- Cloudflare Tunnel ID (REQUIRED at install time - must not be empty)
   # Get from: Zero Trust Dashboard > Networks > Tunnels
+  # Example: "550e8400-e29b-41d4-a716-446655440000" or "my-tunnel-abc-123"
   tunnelId: ""
+
   # -- Cloudflare Account ID (auto-detected if not specified)
   accountId: ""
-  # -- Cloudflare API token with Tunnel permissions
+
+  # -- Cloudflare API token with Tunnel permissions (REQUIRED unless apiTokenSecretName is set)
   # Required scopes: Account.Cloudflare Tunnel:Edit, Zone.DNS:Edit
+  # Leave empty if using apiTokenSecretName for external secret
   apiToken: ""
+
   # -- Existing secret name containing API token (key: api-token)
   # If set, apiToken value is ignored
+  # Use this for external secret management (e.g., External Secrets Operator)
   apiTokenSecretName: ""
 
 # -- Controller configuration

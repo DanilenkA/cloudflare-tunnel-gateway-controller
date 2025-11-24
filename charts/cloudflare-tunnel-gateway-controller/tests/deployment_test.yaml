@@ -605,14 +605,15 @@ tests:
           path: spec.template.spec.containers[0].securityContext.capabilities.drop
           content: ALL
 
-  - it: should allow overriding security context for privileged use (AWG)
+  # Note: Cannot test runAsUser: 0 due to schema validation (minimum: 1)
+  # Schema validation protects against insecure configurations
+  - it: should allow AWG sidecar with required capabilities
     set:
       cloudflare:
         tunnelId: "test-tunnel-id"
         apiToken: "test-api-token"
       podSecurityContext:
         runAsNonRoot: false
-        runAsUser: 0
       securityContext:
         allowPrivilegeEscalation: true
         capabilities:
@@ -625,10 +626,6 @@ tests:
         equal:
           path: spec.template.spec.securityContext.runAsNonRoot
           value: false
-      - template: deployment.yaml
-        equal:
-          path: spec.template.spec.securityContext.runAsUser
-          value: 0
       - template: deployment.yaml
         equal:
           path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
@@ -671,19 +668,8 @@ tests:
           path: spec.template.metadata.annotations["checksum/secret"]
 
   # Required fields and validation tests
-  - it: should still render with empty tunnelId (validation at runtime)
-    set:
-      cloudflare:
-        tunnelId: ""
-        apiToken: "test-api-token"
-    asserts:
-      - template: deployment.yaml
-        isKind:
-          of: Deployment
-      - template: deployment.yaml
-        contains:
-          path: spec.template.spec.containers[0].args
-          content: "--tunnel-id="
+  # Note: Cannot test empty tunnelId due to schema validation (minLength: 1, required)
+  # Schema validation ensures tunnelId is always provided and non-empty
 
   - it: should handle special characters in tunnelId
     set:

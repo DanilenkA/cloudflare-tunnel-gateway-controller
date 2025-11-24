@@ -5,10 +5,13 @@
   "properties": {
     "cloudflare": {
       "type": "object",
+      "required": ["tunnelId"],
       "description": "Cloudflare configuration",
       "properties": {
         "tunnelId": {
           "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9-]+$",
           "description": "Cloudflare Tunnel ID (required at install time)"
         },
         "accountId": {
@@ -166,11 +169,73 @@
     },
     "podSecurityContext": {
       "type": "object",
-      "description": "Pod security context"
+      "description": "Pod security context",
+      "properties": {
+        "runAsNonRoot": {
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fsGroup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seccompProfile": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["RuntimeDefault", "Localhost"]
+            },
+            "localhostProfile": {
+              "type": "string"
+            }
+          }
+        }
+      }
     },
     "securityContext": {
       "type": "object",
-      "description": "Container security context"
+      "description": "Container security context",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readOnlyRootFilesystem": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     },
     "resources": {
       "type": "object",
