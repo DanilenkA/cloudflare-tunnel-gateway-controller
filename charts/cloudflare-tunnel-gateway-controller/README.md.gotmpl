@@ -1,0 +1,173 @@
+{{ template "chart.header" . }}
+{{ template "chart.deprecationWarning" . }}
+{{ template "chart.badgesSection" . }}
+
+## Status
+
+[![Lint and Test Chart](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/test-chart.yaml/badge.svg)](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/test-chart.yaml)
+[![Release](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/release.yaml/badge.svg)](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/release.yaml)
+
+{{ template "chart.description" . }}
+
+{{ template "chart.homepageLine" . }}
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.sourcesSection" . }}
+
+{{ template "chart.requirementsSection" . }}
+
+## Installation
+
+### Prerequisites
+
+- Kubernetes 1.25+
+- Helm 3.0+
+- Gateway API CRDs installed
+- Cloudflare Tunnel created
+
+### Install from OCI Registry
+
+```bash
+helm install cloudflare-tunnel-gateway-controller \
+  oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller \
+  --version {{ template "chart.version" . }} \
+  --namespace cloudflare-tunnel-system \
+  --create-namespace \
+  --set cloudflare.tunnelId="YOUR_TUNNEL_ID" \
+  --set cloudflare.apiToken="YOUR_API_TOKEN"
+```
+
+### Verify Chart Signature
+
+Charts are signed with cosign. Verify before installing:
+
+```bash
+cosign verify ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller:{{ template "chart.version" . }} \
+  --certificate-identity-regexp="https://github.com/lexfrei/cloudflare-tunnel-gateway-controller" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+## Configuration Examples
+
+### Basic Installation
+
+```yaml
+cloudflare:
+  tunnelId: "your-tunnel-id"
+  apiToken: "your-api-token"
+```
+
+### Using External Secrets
+
+```yaml
+cloudflare:
+  tunnelId: "your-tunnel-id"
+  apiTokenSecretName: "my-cloudflare-secret"  # must have key: api-token
+```
+
+### With Managed Cloudflared
+
+```yaml
+cloudflare:
+  tunnelId: "your-tunnel-id"
+  apiToken: "your-api-token"
+
+manageCloudflared:
+  enabled: true
+  tunnelToken: "your-tunnel-token"
+  namespace: "cloudflare-tunnel-system"
+```
+
+### With AmneziaWG Sidecar
+
+```yaml
+cloudflare:
+  tunnelId: "your-tunnel-id"
+  apiToken: "your-api-token"
+
+awg:
+  secretName: "awg-config"  # must contain wg config file
+
+# Required for AWG - needs NET_ADMIN capability
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+
+securityContext:
+  allowPrivilegeEscalation: true
+  capabilities:
+    add:
+      - NET_ADMIN
+    drop: []
+  readOnlyRootFilesystem: false
+```
+
+### Production Configuration
+
+```yaml
+cloudflare:
+  tunnelId: "your-tunnel-id"
+  apiTokenSecretName: "cloudflare-credentials"
+
+replicaCount: 2
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+serviceMonitor:
+  enabled: true
+  labels:
+    prometheus: kube-prometheus
+
+networkPolicy:
+  enabled: true
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: cloudflare-tunnel-gateway-controller
+```
+
+## Usage
+
+After installation, create Gateway and HTTPRoute resources:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: cloudflare-gateway
+spec:
+  gatewayClassName: cloudflare-tunnel
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-app
+spec:
+  parentRefs:
+    - name: cloudflare-gateway
+  hostnames:
+    - "app.example.com"
+  rules:
+    - backendRefs:
+        - name: my-app-service
+          port: 80
+```
+
+{{ template "chart.valuesSection" . }}
+
+{{ template "helm-docs.versionFooter" . }}

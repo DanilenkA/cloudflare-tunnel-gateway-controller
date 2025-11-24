@@ -2,11 +2,13 @@
 
 # -- Cloudflare configuration
 cloudflare:
-  # -- Cloudflare Tunnel ID (required)
+  # -- Cloudflare Tunnel ID (required at install time)
+  # Get from: Zero Trust Dashboard > Networks > Tunnels
   tunnelId: ""
   # -- Cloudflare Account ID (auto-detected if not specified)
   accountId: ""
-  # -- Cloudflare API token
+  # -- Cloudflare API token with Tunnel permissions
+  # Required scopes: Account.Cloudflare Tunnel:Edit, Zone.DNS:Edit
   apiToken: ""
   # -- Existing secret name containing API token (key: api-token)
   # If set, apiToken value is ignored
@@ -16,9 +18,9 @@ cloudflare:
 controller:
   # -- GatewayClass name to watch
   gatewayClassName: "cloudflare-tunnel"
-  # -- Controller name for GatewayClass
+  # -- Controller name for GatewayClass (must be unique in cluster)
   controllerName: "cloudflare.com/tunnel-controller"
-  # -- Kubernetes cluster domain
+  # -- Kubernetes cluster domain for service DNS resolution
   clusterDomain: "cluster.local"
   # -- Log level (debug, info, warn, error)
   logLevel: "info"
@@ -30,6 +32,7 @@ manageCloudflared:
   # -- Deploy and manage cloudflared via Helm
   enabled: false
   # -- Tunnel token for remote-managed mode
+  # Get from: Zero Trust Dashboard > Networks > Tunnels > Configure
   tunnelToken: ""
   # -- Existing secret name containing tunnel token (key: tunnel-token)
   tunnelTokenSecretName: ""
@@ -38,24 +41,32 @@ manageCloudflared:
   # -- Transport protocol (auto, quic, http2)
   protocol: ""
 
-# -- AmneziaWG sidecar configuration
+# -- AmneziaWG sidecar configuration for traffic routing through VPN
 awg:
-  # -- Secret name containing AWG config
+  # -- Secret name containing AWG config (enables AWG sidecar)
   secretName: ""
-  # -- AWG interface name
+  # -- AWG interface name (unique to avoid conflicts)
   interfaceName: "awg-cfd-gw-ctrl0"
 
 # -- Container image configuration
 image:
+  # -- Image repository
   repository: ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller
+  # -- Image pull policy
   pullPolicy: IfNotPresent
-  # -- Overrides appVersion
+  # -- Image tag (defaults to appVersion)
   tag: ""
 
+# -- Image pull secrets for private registries
 imagePullSecrets: []
+
+# -- Override the chart name
 nameOverride: ""
+
+# -- Override the full release name
 fullnameOverride: ""
 
+# -- Service account configuration
 serviceAccount:
   # -- Annotations to add to the service account
   annotations: {}
@@ -63,19 +74,22 @@ serviceAccount:
   # If not set, a name is generated using the fullname template
   name: ""
 
+# -- Annotations to add to pods
 podAnnotations: {}
 
 # -- Additional labels to add to pods
 podLabels: {}
 
-# -- Pod security context
+# -- Pod security context (secure defaults)
+# @default -- See values.yaml
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65534
   seccompProfile:
     type: RuntimeDefault
 
-# -- Container security context
+# -- Container security context (secure defaults)
+# @default -- See values.yaml
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -83,8 +97,9 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
 
-resources:
-  {}
+# -- Container resource requests and limits
+# @default -- No resources specified
+resources: {}
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
@@ -92,10 +107,13 @@ resources:
   #   cpu: 50m
   #   memory: 64Mi
 
+# -- Node selector for pod scheduling
 nodeSelector: {}
 
+# -- Tolerations for pod scheduling
 tolerations: []
 
+# -- Affinity rules for pod scheduling
 affinity: {}
 
 # -- Topology spread constraints for pod distribution
@@ -104,27 +122,30 @@ topologySpreadConstraints: []
 # -- Priority class name for pod scheduling priority
 priorityClassName: ""
 
-# -- Number of replicas
+# -- Number of controller replicas
 replicaCount: 1
 
 # -- Service configuration
 service:
+  # -- Service type
   type: ClusterIP
+  # -- Metrics endpoint port
   metricsPort: 8080
+  # -- Health check endpoint port
   healthPort: 8081
 
-# -- ServiceMonitor configuration for Prometheus
+# -- ServiceMonitor configuration for Prometheus Operator
 serviceMonitor:
-  # -- Enable ServiceMonitor
+  # -- Enable ServiceMonitor creation
   enabled: false
-  # -- Scrape interval
+  # -- Scrape interval (uses Prometheus default if empty)
   interval: ""
-  # -- Additional labels for ServiceMonitor
+  # -- Additional labels for ServiceMonitor (for Prometheus selector)
   labels: {}
 
 # -- NetworkPolicy configuration
 networkPolicy:
-  # -- Enable NetworkPolicy
+  # -- Enable NetworkPolicy for controller pods
   enabled: false
 
 # -- GatewayClass configuration
