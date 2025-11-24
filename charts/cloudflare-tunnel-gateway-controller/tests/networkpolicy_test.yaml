@@ -173,7 +173,7 @@ tests:
             protocol: TCP
             port: 6443
 
-  - it: should allow Cloudflare API egress
+  - it: should allow Cloudflare API egress to specific IP ranges only
     set:
       cloudflare:
         tunnelId: "test-tunnel-id"
@@ -181,11 +181,45 @@ tests:
       networkPolicy:
         enabled: true
     asserts:
-      - equal:
-          path: spec.egress[2].to[0].ipBlock.cidr
-          value: "0.0.0.0/0"
+      # Verify specific Cloudflare IPv4 ranges are present
+      - contains:
+          path: spec.egress[2].to
+          content:
+            ipBlock:
+              cidr: "173.245.48.0/20"
+      - contains:
+          path: spec.egress[2].to
+          content:
+            ipBlock:
+              cidr: "104.16.0.0/13"
+      - contains:
+          path: spec.egress[2].to
+          content:
+            ipBlock:
+              cidr: "172.64.0.0/13"
+      # Verify specific Cloudflare IPv6 ranges are present
+      - contains:
+          path: spec.egress[2].to
+          content:
+            ipBlock:
+              cidr: "2606:4700::/32"
+      # Verify port 443
       - contains:
           path: spec.egress[2].ports
           content:
             protocol: TCP
             port: 443
+
+  - it: should NOT allow 0.0.0.0/0 egress (security hardening)
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      networkPolicy:
+        enabled: true
+    asserts:
+      - notContains:
+          path: spec.egress[2].to
+          content:
+            ipBlock:
+              cidr: "0.0.0.0/0"
