@@ -29,10 +29,10 @@ Kubernetes: `>=1.25.0-0`
 
 ### Prerequisites
 
-- Kubernetes 1.25+
-- Helm 3.0+
-- Gateway API CRDs installed
-- Cloudflare Tunnel created
+* Kubernetes 1.25+
+* Helm 3.0+
+* Gateway API CRDs installed
+* Cloudflare Tunnel created
 
 ### Install from OCI Registry
 
