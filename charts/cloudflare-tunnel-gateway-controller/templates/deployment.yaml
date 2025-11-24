@@ -95,6 +95,15 @@ spec:
               port: {{ .Values.service.healthPort }}
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- if .Values.awg.secretName }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - ip link delete {{ .Values.awg.interfaceName | default "awg-cfd-gw-ctrl0" }} 2>/dev/null || true
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
