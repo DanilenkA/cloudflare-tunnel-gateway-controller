@@ -13,7 +13,12 @@ spec:
     - Ingress
     - Egress
   ingress:
-    - ports:
+    # Allow metrics and health checks from monitoring namespace
+    - {{- if .Values.networkPolicy.ingress.from }}
+      from:
+        {{- toYaml .Values.networkPolicy.ingress.from | nindent 8 }}
+      {{- end }}
+      ports:
         - protocol: TCP
           port: {{ .Values.service.metricsPort }}
         - protocol: TCP

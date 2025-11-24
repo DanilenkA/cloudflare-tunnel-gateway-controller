@@ -223,3 +223,83 @@ tests:
           content:
             ipBlock:
               cidr: "0.0.0.0/0"
+
+  - it: should not have ingress from selector by default
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      networkPolicy:
+        enabled: true
+    asserts:
+      - notExists:
+          path: spec.ingress[0].from
+
+  - it: should allow ingress from specific namespace
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      networkPolicy:
+        enabled: true
+        ingress:
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  name: monitoring
+    asserts:
+      - contains:
+          path: spec.ingress[0].from
+          content:
+            namespaceSelector:
+              matchLabels:
+                name: monitoring
+
+  - it: should allow ingress from specific pods
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      networkPolicy:
+        enabled: true
+        ingress:
+          from:
+            - podSelector:
+                matchLabels:
+                  app: prometheus
+    asserts:
+      - contains:
+          path: spec.ingress[0].from
+          content:
+            podSelector:
+              matchLabels:
+                app: prometheus
+
+  - it: should allow ingress from multiple sources
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      networkPolicy:
+        enabled: true
+        ingress:
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  name: monitoring
+            - podSelector:
+                matchLabels:
+                  app: prometheus
+    asserts:
+      - contains:
+          path: spec.ingress[0].from
+          content:
+            namespaceSelector:
+              matchLabels:
+                name: monitoring
+      - contains:
+          path: spec.ingress[0].from
+          content:
+            podSelector:
+              matchLabels:
+                app: prometheus

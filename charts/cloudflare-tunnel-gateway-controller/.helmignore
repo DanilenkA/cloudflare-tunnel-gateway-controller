@@ -17,5 +17,10 @@ examples/
 .gitlab-ci.yml
 .travis.yml
 
+# Linting configuration
+.markdownlint.yaml
+.yamllint
+.golangci.yaml
+
 # Artifact Hub metadata (published separately)
 artifacthub-repo.yml

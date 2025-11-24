@@ -155,3 +155,37 @@ tests:
         equal:
           path: metadata.name
           value: RELEASE-NAME-short-name
+
+  - it: should not have annotations by default
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: service.yaml
+        notExists:
+          path: metadata.annotations
+
+  - it: should add annotations when specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      service:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/scrape"]
+          value: "true"
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "8080"
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/path"]
+          value: "/metrics"

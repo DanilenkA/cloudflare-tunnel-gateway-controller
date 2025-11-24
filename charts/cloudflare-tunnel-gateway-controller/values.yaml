@@ -52,6 +52,10 @@ awg:
   # -- Secret name containing AWG config (enables AWG sidecar)
   secretName: ""
   # -- AWG interface name (unique to avoid conflicts)
+  # WARNING: If running multiple instances with AWG on the same node,
+  # each instance MUST use a unique interfaceName to prevent conflicts.
+  # Conflicting interface names will cause pod startup failures.
+  # Example: awg-instance-1, awg-instance-2, etc.
   interfaceName: "awg-cfd-gw-ctrl0"
 
 # -- Container image configuration
@@ -160,6 +164,12 @@ service:
   metricsPort: 8080
   # -- Health check endpoint port
   healthPort: 8081
+  # -- Service annotations
+  # Example: Prometheus scraping annotations
+  #   prometheus.io/scrape: "true"
+  #   prometheus.io/port: "8080"
+  #   prometheus.io/path: "/metrics"
+  annotations: {}
 
 # -- ServiceMonitor configuration for Prometheus Operator
 serviceMonitor:
@@ -174,6 +184,18 @@ serviceMonitor:
 networkPolicy:
   # -- Enable NetworkPolicy for controller pods
   enabled: false
+  # -- Ingress source configuration
+  ingress:
+    # -- Allow ingress from specific namespaces/pods
+    # Example for monitoring namespace:
+    #   from:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           name: monitoring
+    #     - podSelector:
+    #         matchLabels:
+    #           app: prometheus
+    from: []
 
 # -- GatewayClass configuration
 gatewayClass:

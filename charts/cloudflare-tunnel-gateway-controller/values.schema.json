@@ -316,6 +316,13 @@
         "healthPort": {
           "type": "integer",
           "default": 8081
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Service annotations (e.g., Prometheus scraping)"
         }
       }
     },
@@ -343,6 +350,15 @@
         "enabled": {
           "type": "boolean",
           "default": false
+        },
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "array",
+              "description": "Allow ingress from specific namespaces/pods"
+            }
+          }
         }
       }
     },
