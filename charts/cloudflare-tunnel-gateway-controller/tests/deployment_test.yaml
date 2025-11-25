@@ -908,3 +908,134 @@ tests:
         equal:
           path: spec.template.spec.containers[0].livenessProbe.failureThreshold
           value: 3
+
+  # DNS configuration tests
+  - it: should not set dnsPolicy by default
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: deployment.yaml
+        notExists:
+          path: spec.template.spec.dnsPolicy
+
+  - it: should not set dnsConfig by default
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: deployment.yaml
+        notExists:
+          path: spec.template.spec.dnsConfig
+
+  - it: should set custom dnsPolicy when specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      dnsPolicy: "None"
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.dnsPolicy
+          value: None
+
+  - it: should set dnsConfig nameservers
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - 1.1.1.1
+          - 8.8.8.8
+    asserts:
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.nameservers
+          content: "1.1.1.1"
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.nameservers
+          content: "8.8.8.8"
+
+  - it: should set dnsConfig searches
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      dnsConfig:
+        searches:
+          - svc.cluster.local
+          - cluster.local
+    asserts:
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.searches
+          content: "svc.cluster.local"
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.searches
+          content: "cluster.local"
+
+  - it: should set dnsConfig options
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+          - name: timeout
+            value: "5"
+    asserts:
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.options
+          content:
+            name: ndots
+            value: "2"
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.options
+          content:
+            name: timeout
+            value: "5"
+
+  - it: should set complete dnsConfig
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - 1.1.1.1
+        searches:
+          - cloudflare-tunnel-system.svc.cluster.local
+        options:
+          - name: ndots
+            value: "2"
+    asserts:
+      - template: deployment.yaml
+        equal:
+          path: spec.template.spec.dnsPolicy
+          value: None
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.nameservers
+          content: "1.1.1.1"
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.searches
+          content: "cloudflare-tunnel-system.svc.cluster.local"
+      - template: deployment.yaml
+        contains:
+          path: spec.template.spec.dnsConfig.options
+          content:
+            name: ndots
+            value: "2"

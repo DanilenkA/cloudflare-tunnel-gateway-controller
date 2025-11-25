@@ -259,6 +259,43 @@
     "priorityClassName": {
       "type": "string"
     },
+    "dnsPolicy": {
+      "type": "string",
+      "enum": ["", "ClusterFirst", "Default", "ClusterFirstWithHostNet", "None"],
+      "description": "DNS policy for pod"
+    },
+    "dnsConfig": {
+      "type": "object",
+      "description": "Custom DNS configuration for pod",
+      "properties": {
+        "nameservers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "searches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "replicaCount": {
       "type": "integer",
       "minimum": 1,

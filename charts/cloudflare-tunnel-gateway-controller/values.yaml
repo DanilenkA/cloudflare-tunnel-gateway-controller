@@ -139,6 +139,24 @@ priorityClassName: ""
 # -- Termination grace period in seconds for graceful shutdown
 terminationGracePeriodSeconds: 30
 
+# -- DNS policy for pod (ClusterFirst, Default, ClusterFirstWithHostNet, None)
+# Use "None" with dnsConfig for custom DNS configuration
+dnsPolicy: ""
+
+# -- Custom DNS configuration for pod
+# Example for custom DNS servers:
+#   nameservers:
+#     - 1.1.1.1
+#     - 8.8.8.8
+#   searches:
+#     - cloudflare-tunnel-system.svc.cluster.local
+#     - svc.cluster.local
+#     - cluster.local
+#   options:
+#     - name: ndots
+#       value: "2"
+dnsConfig: {}
+
 # -- Number of controller replicas
 replicaCount: 1
 

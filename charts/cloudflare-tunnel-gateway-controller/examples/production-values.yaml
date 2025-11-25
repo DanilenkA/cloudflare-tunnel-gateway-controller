@@ -1,13 +1,15 @@
 # Production configuration example
-# Recommended settings for production deployments
+# Recommended settings for production deployments with full security hardening
 #
 # Features:
-#   - High availability with multiple replicas
-#   - Resource limits and requests
+#   - High availability with multiple replicas and PodDisruptionBudget
+#   - Resource limits and requests for QoS
 #   - Prometheus monitoring via ServiceMonitor
-#   - Network policies for security
-#   - Zone-aware pod distribution
+#   - Network policies with strict ingress/egress rules
+#   - Zone-aware pod distribution for HA
 #   - External secrets for credentials
+#   - Security contexts (non-root, read-only filesystem)
+#   - Graceful shutdown with proper lifecycle hooks
 #
 # Usage:
 #   helm install cloudflare-tunnel-gateway-controller \
@@ -18,20 +20,31 @@
 
 cloudflare:
   # Cloudflare Tunnel ID (required)
-  tunnelId: "your-tunnel-id"
+  # Get from: Zero Trust Dashboard > Networks > Tunnels
+  tunnelId: "550e8400-e29b-41d4-a716-446655440000"
 
   # Use external secret for API token (recommended for production)
+  # See examples/external-secrets-operator.yaml for ESO integration
   apiTokenSecretName: "cloudflare-credentials"
 
 controller:
-  # Debug logging disabled in production
+  # Production logging configuration
   logLevel: "info"
   logFormat: "json"
+  gatewayClassName: "cloudflare-tunnel"
+  controllerName: "cloudflare.com/tunnel-controller"
+  clusterDomain: "cluster.local"
 
-# High availability
+# High availability configuration
 replicaCount: 2
 
-# Resource management
+# PodDisruptionBudget for availability during maintenance
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: "IfHealthyBudget"
+
+# Resource management for guaranteed QoS
 resources:
   limits:
     cpu: 200m
@@ -40,17 +53,54 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# Security contexts (production hardening)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+# Graceful shutdown configuration
+terminationGracePeriodSeconds: 30
+
 # Prometheus monitoring
+service:
+  type: ClusterIP
+  metricsPort: 8080
+  healthPort: 8081
+  # Optional: Add Prometheus scraping annotations
+  # annotations:
+  #   prometheus.io/scrape: "true"
+  #   prometheus.io/port: "8080"
+  #   prometheus.io/path: "/metrics"
+
 serviceMonitor:
   enabled: true
+  interval: "30s"
   labels:
     prometheus: kube-prometheus
 
-# Network security
+# Network security with strict policies
 networkPolicy:
   enabled: true
+  # Allow ingress only from monitoring namespace
+  ingress:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            name: monitoring
+      - podSelector:
+          matchLabels:
+            app: prometheus
 
-# Zone-aware distribution for HA
+# Zone-aware distribution for HA across availability zones
 topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
@@ -59,7 +109,7 @@ topologySpreadConstraints:
       matchLabels:
         app.kubernetes.io/name: cloudflare-tunnel-gateway-controller
 
-# Pod disruption budget friendly scheduling
+# Pod anti-affinity to avoid co-location on same node
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
@@ -69,3 +119,50 @@ affinity:
             matchLabels:
               app.kubernetes.io/name: cloudflare-tunnel-gateway-controller
           topologyKey: kubernetes.io/hostname
+
+# Optional: Priority class for critical workloads
+# priorityClassName: "system-cluster-critical"
+
+# Optional: Service account annotations for cloud provider authentication
+# serviceAccount:
+#   annotations:
+#     # AWS IRSA
+#     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/cloudflare-tunnel-controller"
+#     # GCP Workload Identity
+#     # iam.gke.io/gcp-service-account: cloudflare-tunnel-controller@my-project.iam.gserviceaccount.com
+#     # Azure Workload Identity
+#     # azure.workload.identity/client-id: "12345678-1234-1234-1234-123456789012"
+
+# Optional: Custom DNS configuration
+# dnsPolicy: "None"
+# dnsConfig:
+#   nameservers:
+#     - 1.1.1.1
+#     - 8.8.8.8
+#   searches:
+#     - cloudflare-tunnel-system.svc.cluster.local
+#     - svc.cluster.local
+#     - cluster.local
+#   options:
+#     - name: ndots
+#       value: "2"
+
+# Optional: Tolerations for node taints
+# tolerations:
+#   - key: "workload"
+#     operator: "Equal"
+#     value: "network"
+#     effect: "NoSchedule"
+
+# Optional: Node selector for dedicated nodes
+# nodeSelector:
+#   workload: network
+
+# Optional: Pod labels for additional metadata
+# podLabels:
+#   environment: production
+#   team: platform
+
+# Optional: Pod annotations
+# podAnnotations:
+#   prometheus.io/scrape: "true"
