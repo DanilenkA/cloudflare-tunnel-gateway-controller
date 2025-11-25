@@ -22,24 +22,31 @@ This guide helps diagnose and resolve common issues with the Cloudflare Tunnel G
 **Common causes**:
 
 1. Empty or invalid `tunnelId`:
-   ```
+
+   ```text
    Error: at '/cloudflare/tunnelId': minLength: got 0, want 1
    ```
+
    **Solution**: Provide a valid Tunnel ID from Cloudflare Zero Trust Dashboard
 
 2. Invalid characters in `tunnelId`:
-   ```
+
+   ```text
    Error: at '/cloudflare/tunnelId': pattern mismatch
    ```
+
    **Solution**: Use only alphanumeric characters and hyphens (a-zA-Z0-9-)
 
 3. Missing API credentials:
-   ```
+
+   ```text
    Error: neither apiToken nor apiTokenSecretName provided
    ```
+
    **Solution**: Set either `cloudflare.apiToken` or `cloudflare.apiTokenSecretName`
 
 **Verification**:
+
 ```bash
 # Validate values before installation
 helm lint charts/cloudflare-tunnel-gateway-controller -f my-values.yaml
@@ -55,6 +62,7 @@ helm install --dry-run --debug my-release \
 **Problem**: Chart not found or authentication errors
 
 **Solution**:
+
 ```bash
 # Ensure you're using the correct OCI registry URL
 helm install cloudflare-tunnel-gateway-controller \
@@ -70,6 +78,7 @@ echo $GITHUB_TOKEN | helm registry login ghcr.io --username USERNAME --password-
 ### CrashLoopBackOff
 
 **Diagnosis**:
+
 ```bash
 # Check pod status
 kubectl get pods -n cloudflare-tunnel-system
@@ -86,26 +95,33 @@ kubectl describe pod -n cloudflare-tunnel-system \
 **Common causes**:
 
 1. **Invalid API Token**:
-   ```
+
+   ```text
    Error: authentication failed: invalid API token
    ```
+
    **Solution**: Verify token has correct scopes (Account.Cloudflare Tunnel:Edit, Zone.DNS:Edit)
 
 2. **Missing Secret**:
-   ```
+
+   ```text
    Error: secret "cloudflare-credentials" not found
    ```
+
    **Solution**: Create the secret or update `apiTokenSecretName` in values
 
 3. **Read-only filesystem errors**:
-   ```
+
+   ```text
    Error: cannot create directory: read-only file system
    ```
+
    **Solution**: Ensure temporary directories are writable (check emptyDir volumes in deployment)
 
 ### ImagePullBackOff
 
 **Diagnosis**:
+
 ```bash
 kubectl describe pod -n cloudflare-tunnel-system POD_NAME
 ```
@@ -117,6 +133,7 @@ kubectl describe pod -n cloudflare-tunnel-system POD_NAME
 3. Network issues preventing image download
 
 **Solution**:
+
 ```yaml
 # Use correct image settings
 image:
@@ -134,11 +151,13 @@ imagePullSecrets:
 **Problem**: Pod killed during startup by startupProbe
 
 **Diagnosis**:
+
 ```bash
 kubectl describe pod -n cloudflare-tunnel-system POD_NAME | grep -A 10 "Startup"
 ```
 
 **Solution**: Increase startup time for slow environments
+
 ```yaml
 # In values.yaml - NOT recommended to override defaults
 # Startup probe allows 60 seconds (12 failures × 5 second period)
@@ -150,10 +169,12 @@ kubectl describe pod -n cloudflare-tunnel-system POD_NAME | grep -A 10 "Startup"
 ### Invalid Cloudflare API Token
 
 **Symptoms**:
+
 - Pods crash with authentication errors
 - Logs show `401 Unauthorized` or `403 Forbidden`
 
 **Diagnosis**:
+
 ```bash
 # Test API token manually
 export CF_API_TOKEN="your-token"
@@ -168,6 +189,7 @@ curl -H "Authorization: Bearer $CF_API_TOKEN" \
    - Zone.DNS:Edit
 
 2. Update secret:
+
    ```bash
    kubectl create secret generic cloudflare-credentials \
      --from-literal=api-token="NEW_TOKEN" \
@@ -184,6 +206,7 @@ curl -H "Authorization: Bearer $CF_API_TOKEN" \
 **Problem**: ExternalSecret not syncing
 
 **Diagnosis**:
+
 ```bash
 # Check ExternalSecret status
 kubectl describe externalsecret cloudflare-api-token -n cloudflare-tunnel-system
@@ -208,11 +231,13 @@ kubectl logs -n external-secrets-system \
 ### NetworkPolicy Blocking Traffic
 
 **Symptoms**:
+
 - Metrics not accessible from Prometheus
 - Health checks failing
 - Cannot communicate with Cloudflare API
 
 **Diagnosis**:
+
 ```bash
 # Check NetworkPolicy rules
 kubectl get networkpolicy -n cloudflare-tunnel-system
@@ -228,6 +253,7 @@ curl -I https://api.cloudflare.com
 ```
 
 **Solution**: Adjust NetworkPolicy ingress selectors
+
 ```yaml
 networkPolicy:
   enabled: true
@@ -242,10 +268,12 @@ networkPolicy:
 ### DNS Resolution Issues
 
 **Symptoms**:
+
 - Cannot resolve Cloudflare API endpoints
 - Errors: `no such host` or `dial tcp: lookup failed`
 
 **Diagnosis**:
+
 ```bash
 # Check pod DNS configuration
 kubectl exec -n cloudflare-tunnel-system POD_NAME -- cat /etc/resolv.conf
@@ -256,6 +284,7 @@ kubectl exec -n cloudflare-tunnel-system POD_NAME -- \
 ```
 
 **Solution**: Configure custom DNS
+
 ```yaml
 dnsPolicy: "None"
 dnsConfig:
@@ -274,6 +303,7 @@ dnsConfig:
 ### Cloudflare API Unreachable
 
 **Diagnosis**:
+
 ```bash
 # From controller pod
 kubectl exec -n cloudflare-tunnel-system POD_NAME -- \
@@ -291,10 +321,12 @@ kubectl get networkpolicy -n cloudflare-tunnel-system -o yaml | \
 ### AWG Interface Creation Failures
 
 **Symptoms**:
+
 - Container crash with `Operation not permitted`
 - Interface conflicts: `device already exists`
 
 **Diagnosis**:
+
 ```bash
 # Check security context
 kubectl get deployment -n cloudflare-tunnel-system \
@@ -310,12 +342,14 @@ kubectl logs -n cloudflare-tunnel-system POD_NAME -c amneziawg
 1. **Permission issues**: AWG requires `NET_ADMIN` capability (chart handles this automatically)
 
 2. **Interface name conflicts**:
+
    ```yaml
    awg:
      interfaceName: "awg-unique-name-1"  # Use unique name per instance
    ```
 
 3. **Missing secret**:
+
    ```bash
    kubectl create secret generic awg-config \
      --from-file=wg0.conf=/path/to/config \
@@ -327,6 +361,7 @@ kubectl logs -n cloudflare-tunnel-system POD_NAME -c amneziawg
 **Problem**: AWG interface not cleaned up on pod termination
 
 **Diagnosis**:
+
 ```bash
 # Check preStop hook
 kubectl get deployment -n cloudflare-tunnel-system \
@@ -335,6 +370,7 @@ kubectl get deployment -n cloudflare-tunnel-system \
 ```
 
 **Solution**: Chart includes preStop hook to delete interface. If issues persist:
+
 ```yaml
 terminationGracePeriodSeconds: 60  # Increase if cleanup takes time
 ```
@@ -344,6 +380,7 @@ terminationGracePeriodSeconds: 60  # Increase if cleanup takes time
 ### Gateway Not Ready
 
 **Diagnosis**:
+
 ```bash
 # Check Gateway status
 kubectl get gateway -A
@@ -358,12 +395,14 @@ kubectl logs -n cloudflare-tunnel-system \
 **Common causes**:
 
 1. **GatewayClass not found**:
+
    ```yaml
    gatewayClass:
      create: true  # Ensure GatewayClass is created
    ```
 
 2. **Wrong controller name in Gateway spec**:
+
    ```yaml
    # Gateway must reference correct GatewayClass
    spec:
@@ -375,6 +414,7 @@ kubectl logs -n cloudflare-tunnel-system \
 ### HTTPRoute Not Attached
 
 **Diagnosis**:
+
 ```bash
 kubectl describe httproute my-route -n my-namespace
 ```
@@ -390,6 +430,7 @@ kubectl describe httproute my-route -n my-namespace
 **Problem**: Gateway/HTTPRoute status conditions not updating
 
 **Diagnosis**:
+
 ```bash
 # Check RBAC permissions
 kubectl auth can-i update gateways/status \
@@ -408,6 +449,7 @@ kubectl logs -n cloudflare-tunnel-system deployment/cloudflare-tunnel-gateway-co
 **Problem**: Prometheus cannot scrape metrics
 
 **Diagnosis**:
+
 ```bash
 # Test metrics endpoint
 kubectl port-forward -n cloudflare-tunnel-system \
@@ -419,6 +461,7 @@ curl http://localhost:8080/metrics
 **Solutions**:
 
 1. **Service annotations** (for annotation-based discovery):
+
    ```yaml
    service:
      annotations:
@@ -428,6 +471,7 @@ curl http://localhost:8080/metrics
    ```
 
 2. **ServiceMonitor** (for Prometheus Operator):
+
    ```yaml
    serviceMonitor:
      enabled: true
@@ -440,6 +484,7 @@ curl http://localhost:8080/metrics
 ### Health Checks Failing
 
 **Diagnosis**:
+
 ```bash
 # Test health endpoints
 kubectl port-forward -n cloudflare-tunnel-system \
@@ -460,10 +505,12 @@ curl http://localhost:8081/readyz
 ### High Memory Usage
 
 **Symptoms**:
+
 - Pods OOMKilled
 - Memory usage growing over time
 
 **Diagnosis**:
+
 ```bash
 # Check resource usage
 kubectl top pod -n cloudflare-tunnel-system
@@ -477,6 +524,7 @@ kubectl get deployment -n cloudflare-tunnel-system \
 **Solutions**:
 
 1. **Increase memory limits**:
+
    ```yaml
    resources:
      limits:
@@ -491,6 +539,7 @@ kubectl get deployment -n cloudflare-tunnel-system \
 ### High CPU Usage
 
 **Diagnosis**:
+
 ```bash
 kubectl top pod -n cloudflare-tunnel-system
 ```
@@ -498,6 +547,7 @@ kubectl top pod -n cloudflare-tunnel-system
 **Solutions**:
 
 1. **Increase CPU limits**:
+
    ```yaml
    resources:
      limits:
@@ -505,6 +555,7 @@ kubectl top pod -n cloudflare-tunnel-system
    ```
 
 2. **Increase replicas** for horizontal scaling:
+
    ```yaml
    replicaCount: 3
    podDisruptionBudget:
@@ -517,6 +568,7 @@ kubectl top pod -n cloudflare-tunnel-system
 **Problem**: Changes to Gateway/HTTPRoute take long to apply
 
 **Diagnosis**:
+
 ```bash
 # Check controller logs for reconciliation times
 kubectl logs -n cloudflare-tunnel-system \
@@ -541,6 +593,7 @@ controller:
 ```
 
 After updating:
+
 ```bash
 helm upgrade cloudflare-tunnel-gateway-controller \
   oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller \
@@ -584,4 +637,4 @@ When reporting issues, include:
 5. Gateway/HTTPRoute manifests (sanitize sensitive data)
 6. Output of diagnostic commands above
 
-Report issues at: https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/issues
+Report issues at: <https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/issues>
