@@ -26,6 +26,11 @@ type Config struct {
 	MetricsAddr      string
 	HealthAddr       string
 
+	// Leader election config
+	LeaderElect     bool
+	LeaderElectNS   string
+	LeaderElectName string
+
 	// Cloudflared Helm deployment config
 	TunnelToken       string
 	CloudflaredNS     string
@@ -66,12 +71,25 @@ func Run(ctx context.Context, cfg *Config) error {
 
 	logger.Info("creating ctrl.Manager")
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOptions := ctrl.Options{
 		Metrics: server.Options{
 			BindAddress: cfg.MetricsAddr,
 		},
 		HealthProbeBindAddress: cfg.HealthAddr,
-	})
+	}
+
+	if cfg.LeaderElect {
+		mgrOptions.LeaderElection = true
+		mgrOptions.LeaderElectionID = cfg.LeaderElectName
+		mgrOptions.LeaderElectionNamespace = cfg.LeaderElectNS
+
+		logger.Info("leader election enabled",
+			"id", cfg.LeaderElectName,
+			"namespace", cfg.LeaderElectNS,
+		)
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOptions)
 	if err != nil {
 		return errors.Wrap(err, "failed to create manager")
 	}
