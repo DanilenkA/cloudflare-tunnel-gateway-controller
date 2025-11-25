@@ -31,7 +31,7 @@ jobs:
           python-version: '3.12'
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.7.0
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: Install tools
         run: |
@@ -48,6 +48,17 @@ jobs:
           tar --extract --gzip --file ah_${AH_VERSION}_linux_amd64.tar.gz
           chmod +x ah
           sudo mv ah /usr/local/bin/ah
+
+          # helm-docs
+          # renovate: datasource=github-releases depName=norwoodj/helm-docs
+          HELM_DOCS_VERSION="1.14.2"
+          wget --quiet https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz
+          tar --extract --gzip --file helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz
+          chmod +x helm-docs
+          sudo mv helm-docs /usr/local/bin/helm-docs
+
+          # markdownlint-cli
+          npm install --global markdownlint-cli
 
       - name: Run Helm Lint
         run: |
@@ -109,6 +120,33 @@ jobs:
             --set cloudflare.tunnelId=test-tunnel-id \
             --set cloudflare.apiToken=test-api-token \
             --set serviceMonitor.enabled=true
+
+      - name: Validate helm-docs
+        run: |
+          CHART_DIR="charts/cloudflare-tunnel-gateway-controller"
+          echo "Validating README.md is up to date..."
+          helm-docs "$CHART_DIR"
+
+          if git diff --exit-code "$CHART_DIR/README.md" > /dev/null 2>&1; then
+            echo "README.md is up to date"
+          else
+            echo "ERROR: README.md is out of date!"
+            echo "Please run: helm-docs $CHART_DIR"
+            echo ""
+            echo "Diff:"
+            git diff "$CHART_DIR/README.md"
+            exit 1
+          fi
+
+      - name: Run Markdownlint
+        run: |
+          CHART_DIR="charts/cloudflare-tunnel-gateway-controller"
+          if [ -f "$CHART_DIR/README.md" ]; then
+            echo "Running markdownlint on README.md..."
+            markdownlint "$CHART_DIR/README.md" --config "$CHART_DIR/.markdownlint.yaml"
+          else
+            echo "No README.md found, skipping markdownlint"
+          fi
 
       - name: Summary
         if: always()

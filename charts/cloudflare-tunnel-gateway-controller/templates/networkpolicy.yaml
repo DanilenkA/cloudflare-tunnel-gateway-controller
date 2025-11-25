@@ -13,7 +13,12 @@ spec:
     - Ingress
     - Egress
   ingress:
-    - ports:
+    # Allow metrics and health checks from monitoring namespace
+    - {{- if .Values.networkPolicy.ingress.from }}
+      from:
+        {{- toYaml .Values.networkPolicy.ingress.from | nindent 8 }}
+      {{- end }}
+      ports:
         - protocol: TCP
           port: {{ .Values.service.metricsPort }}
         - protocol: TCP
@@ -31,10 +36,16 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Cloudflare API
+    # Cloudflare API - configurable IP ranges for security
     - to:
+        {{- range .Values.networkPolicy.cloudflareIpRanges.ipv4 }}
         - ipBlock:
-            cidr: 0.0.0.0/0
+            cidr: {{ . }}
+        {{- end }}
+        {{- range .Values.networkPolicy.cloudflareIpRanges.ipv6 }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 443

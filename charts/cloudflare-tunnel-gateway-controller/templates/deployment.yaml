@@ -1,3 +1,5 @@
+{{- include "cf-tunnel-gw-ctrl.validateConfig" . -}}
+{{- include "cf-tunnel-gw-ctrl.validatePDB" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +32,14 @@ spec:
       priorityClassName: {{ .Values.priorityClassName }}
       {{- end }}
       serviceAccountName: {{ include "cf-tunnel-gw-ctrl.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -83,20 +93,82 @@ spec:
             - name: health
               containerPort: {{ .Values.service.healthPort }}
               protocol: TCP
+          {{- if .Values.healthProbes.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.service.healthPort }}
+            initialDelaySeconds: {{ .Values.healthProbes.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthProbes.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.healthProbes.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.healthPort }}
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            initialDelaySeconds: {{ .Values.healthProbes.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthProbes.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.healthProbes.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ .Values.service.healthPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.healthProbes.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.readinessProbe.periodSeconds }}
+            {{- if .Values.healthProbes.readinessProbe.timeoutSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.readinessProbe.timeoutSeconds }}
+            {{- end }}
+            {{- if .Values.healthProbes.readinessProbe.failureThreshold }}
+            failureThreshold: {{ .Values.healthProbes.readinessProbe.failureThreshold }}
+            {{- end }}
+          {{- end }}
+          {{- if .Values.awg.secretName }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    set +e
+                    interface="{{ .Values.awg.interfaceName | default "awg-cfd-gw-ctrl0" }}"
+                    echo "AWG cleanup: checking interface $interface"
+
+                    if ! command -v ip > /dev/null 2>&1; then
+                      echo "WARNING: ip command not found, skipping AWG interface cleanup"
+                      exit 0
+                    fi
+
+                    if ip link show "$interface" > /dev/null 2>&1; then
+                      echo "Deleting AWG interface: $interface"
+                      if ip link delete "$interface"; then
+                        echo "Successfully deleted AWG interface: $interface"
+                      else
+                        echo "WARNING: Failed to delete AWG interface $interface, continuing shutdown"
+                      fi
+                    else
+                      echo "AWG interface $interface not found, skipping deletion"
+                    fi
+
+                    exit 0
+          {{- end }}
           resources:
+            {{- if .Values.resources }}
             {{- toYaml .Values.resources | nindent 12 }}
+            {{- else }}
+            # Recommended defaults for production
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

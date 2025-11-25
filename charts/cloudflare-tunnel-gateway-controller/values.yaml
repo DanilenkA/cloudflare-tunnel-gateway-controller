@@ -2,23 +2,31 @@
 
 # -- Cloudflare configuration
 cloudflare:
-  # -- Cloudflare Tunnel ID (required)
+  # -- Cloudflare Tunnel ID (REQUIRED at install time - must not be empty)
+  # Get from: Zero Trust Dashboard > Networks > Tunnels
+  # Example: "550e8400-e29b-41d4-a716-446655440000" or "my-tunnel-abc-123"
   tunnelId: ""
+
   # -- Cloudflare Account ID (auto-detected if not specified)
   accountId: ""
-  # -- Cloudflare API token
+
+  # -- Cloudflare API token with Tunnel permissions (REQUIRED unless apiTokenSecretName is set)
+  # Required scopes: Account.Cloudflare Tunnel:Edit, Zone.DNS:Edit
+  # Leave empty if using apiTokenSecretName for external secret
   apiToken: ""
+
   # -- Existing secret name containing API token (key: api-token)
   # If set, apiToken value is ignored
+  # Use this for external secret management (e.g., External Secrets Operator)
   apiTokenSecretName: ""
 
 # -- Controller configuration
 controller:
   # -- GatewayClass name to watch
   gatewayClassName: "cloudflare-tunnel"
-  # -- Controller name for GatewayClass
+  # -- Controller name for GatewayClass (must be unique in cluster)
   controllerName: "cloudflare.com/tunnel-controller"
-  # -- Kubernetes cluster domain
+  # -- Kubernetes cluster domain for service DNS resolution
   clusterDomain: "cluster.local"
   # -- Log level (debug, info, warn, error)
   logLevel: "info"
@@ -30,6 +38,7 @@ manageCloudflared:
   # -- Deploy and manage cloudflared via Helm
   enabled: false
   # -- Tunnel token for remote-managed mode
+  # Get from: Zero Trust Dashboard > Networks > Tunnels > Configure
   tunnelToken: ""
   # -- Existing secret name containing tunnel token (key: tunnel-token)
   tunnelTokenSecretName: ""
@@ -38,44 +47,60 @@ manageCloudflared:
   # -- Transport protocol (auto, quic, http2)
   protocol: ""
 
-# -- AmneziaWG sidecar configuration
+# -- AmneziaWG sidecar configuration for traffic routing through VPN
 awg:
-  # -- Secret name containing AWG config
+  # -- Secret name containing AWG config (enables AWG sidecar)
   secretName: ""
-  # -- AWG interface name
-  interfaceName: ""
+  # -- AWG interface name (unique to avoid conflicts)
+  # WARNING: If running multiple instances with AWG on the same node,
+  # each instance MUST use a unique interfaceName to prevent conflicts.
+  # Conflicting interface names will cause pod startup failures.
+  # Example: awg-instance-1, awg-instance-2, etc.
+  interfaceName: "awg-cfd-gw-ctrl0"
 
 # -- Container image configuration
 image:
+  # -- Image repository
   repository: ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller
+  # -- Image pull policy
   pullPolicy: IfNotPresent
-  # -- Overrides appVersion
+  # -- Image tag (defaults to appVersion)
   tag: ""
 
+# -- Image pull secrets for private registries
 imagePullSecrets: []
+
+# -- Override the chart name
 nameOverride: ""
+
+# -- Override the full release name
 fullnameOverride: ""
 
+# -- Service account configuration
 serviceAccount:
   # -- Annotations to add to the service account
   annotations: {}
   # -- The name of the service account to use
-  # If not set, a name is generated using the fullname template
+  # If empty, uses the fullname template (release-name-chart-name)
+  # Override this if you want to use a pre-existing service account
   name: ""
 
+# -- Annotations to add to pods
 podAnnotations: {}
 
 # -- Additional labels to add to pods
 podLabels: {}
 
-# -- Pod security context
+# -- Pod security context (secure defaults)
+# @default -- See values.yaml
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65534
   seccompProfile:
     type: RuntimeDefault
 
-# -- Container security context
+# -- Container security context (secure defaults)
+# @default -- See values.yaml
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -83,19 +108,27 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
 
+# -- Container resource requests and limits
+# @default -- See values.yaml for recommended production defaults
+# When resources is empty ({}), the chart will use recommended defaults.
+# Specify explicit values to override defaults.
 resources:
-  {}
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 50m
-  #   memory: 64Mi
+  # Recommended resource limits for production
+  # Can be overridden for specific environments
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
 
+# -- Node selector for pod scheduling
 nodeSelector: {}
 
+# -- Tolerations for pod scheduling
 tolerations: []
 
+# -- Affinity rules for pod scheduling
 affinity: {}
 
 # -- Topology spread constraints for pod distribution
@@ -104,28 +137,139 @@ topologySpreadConstraints: []
 # -- Priority class name for pod scheduling priority
 priorityClassName: ""
 
-# -- Number of replicas
+# -- Termination grace period in seconds for graceful shutdown
+terminationGracePeriodSeconds: 30
+
+# -- Health probes configuration
+healthProbes:
+  # -- Startup probe configuration
+  # Gives controller time to initialize before liveness probe starts
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 12
+  # -- Liveness probe configuration
+  # Restarts container if probe fails
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe configuration
+  # Removes pod from service endpoints if probe fails
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# -- DNS policy for pod (ClusterFirst, Default, ClusterFirstWithHostNet, None)
+# Use "None" with dnsConfig for custom DNS configuration
+dnsPolicy: ""
+
+# -- Custom DNS configuration for pod
+# Example for custom DNS servers:
+#   nameservers:
+#     - 1.1.1.1
+#     - 8.8.8.8
+#   searches:
+#     - cloudflare-tunnel-system.svc.cluster.local
+#     - svc.cluster.local
+#     - cluster.local
+#   options:
+#     - name: ndots
+#       value: "2"
+dnsConfig: {}
+
+# -- Number of controller replicas
 replicaCount: 1
+
+# -- PodDisruptionBudget configuration for high availability
+podDisruptionBudget:
+  # -- Enable PodDisruptionBudget
+  enabled: false
+  # -- Minimum number of available pods during disruptions
+  # Must not be used together with maxUnavailable
+  minAvailable: 1
+  # -- Maximum number of unavailable pods during disruptions
+  # Must not be used together with minAvailable
+  maxUnavailable: null
+  # -- Policy for evicting unhealthy pods (IfHealthyBudget, AlwaysAllow)
+  # Requires Kubernetes 1.26+
+  unhealthyPodEvictionPolicy: "IfHealthyBudget"
 
 # -- Service configuration
 service:
+  # -- Service type
   type: ClusterIP
+  # -- Metrics endpoint port
   metricsPort: 8080
+  # -- Health check endpoint port
   healthPort: 8081
+  # -- Service annotations
+  # Example: Prometheus scraping annotations
+  #   prometheus.io/scrape: "true"
+  #   prometheus.io/port: "8080"
+  #   prometheus.io/path: "/metrics"
+  annotations: {}
 
-# -- ServiceMonitor configuration for Prometheus
+# -- ServiceMonitor configuration for Prometheus Operator
 serviceMonitor:
-  # -- Enable ServiceMonitor
+  # -- Enable ServiceMonitor creation
   enabled: false
-  # -- Scrape interval
+  # -- Scrape interval (uses Prometheus default if empty)
   interval: ""
-  # -- Additional labels for ServiceMonitor
+  # -- Additional labels for ServiceMonitor (for Prometheus selector)
   labels: {}
 
 # -- NetworkPolicy configuration
 networkPolicy:
-  # -- Enable NetworkPolicy
+  # -- Enable NetworkPolicy for controller pods
   enabled: false
+  # -- Ingress source configuration
+  ingress:
+    # -- Allow ingress from specific namespaces/pods
+    # Example for monitoring namespace:
+    #   from:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           name: monitoring
+    #     - podSelector:
+    #         matchLabels:
+    #           app: prometheus
+    from: []
+  # -- Cloudflare IP ranges for egress NetworkPolicy
+  # Source: https://www.cloudflare.com/ips/
+  # Last updated: 2025-11-25
+  # To update: curl https://www.cloudflare.com/ips-v4 && curl https://www.cloudflare.com/ips-v6
+  cloudflareIpRanges:
+    ipv4:
+      - 173.245.48.0/20
+      - 103.21.244.0/22
+      - 103.22.200.0/22
+      - 103.31.4.0/22
+      - 141.101.64.0/18
+      - 108.162.192.0/18
+      - 190.93.240.0/20
+      - 188.114.96.0/20
+      - 197.234.240.0/22
+      - 198.41.128.0/17
+      - 162.158.0.0/15
+      - 104.16.0.0/13
+      - 104.24.0.0/14
+      - 172.64.0.0/13
+      - 131.0.72.0/22
+    ipv6:
+      - 2606:4700::/32
+      - 2803:f800::/32
+      - 2405:b500::/32
+      - 2405:8100::/32
+      - 2a06:98c0::/29
+      - 2c0f:f248::/32
 
 # -- GatewayClass configuration
 gatewayClass:

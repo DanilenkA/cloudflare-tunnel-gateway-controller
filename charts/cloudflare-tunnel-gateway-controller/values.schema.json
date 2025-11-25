@@ -9,6 +9,7 @@
       "properties": {
         "tunnelId": {
           "type": "string",
+          "pattern": "^[a-zA-Z0-9-]*$",
           "description": "Cloudflare Tunnel ID (required at install time)"
         },
         "accountId": {
@@ -97,7 +98,8 @@
         },
         "interfaceName": {
           "type": "string",
-          "description": "AWG interface name"
+          "description": "AWG interface name",
+          "default": "awg-cfd-gw-ctrl0"
         }
       }
     },
@@ -165,11 +167,73 @@
     },
     "podSecurityContext": {
       "type": "object",
-      "description": "Pod security context"
+      "description": "Pod security context",
+      "properties": {
+        "runAsNonRoot": {
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fsGroup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seccompProfile": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["RuntimeDefault", "Localhost"]
+            },
+            "localhostProfile": {
+              "type": "string"
+            }
+          }
+        }
+      }
     },
     "securityContext": {
       "type": "object",
-      "description": "Container security context"
+      "description": "Container security context",
+      "properties": {
+        "allowPrivilegeEscalation": {
+          "type": "boolean"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runAsGroup": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readOnlyRootFilesystem": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     },
     "resources": {
       "type": "object",
@@ -193,10 +257,177 @@
     "priorityClassName": {
       "type": "string"
     },
+    "dnsPolicy": {
+      "type": "string",
+      "enum": ["", "ClusterFirst", "Default", "ClusterFirstWithHostNet", "None"],
+      "description": "DNS policy for pod"
+    },
+    "dnsConfig": {
+      "type": "object",
+      "description": "Custom DNS configuration for pod",
+      "properties": {
+        "nameservers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "searches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "replicaCount": {
       "type": "integer",
       "minimum": 1,
       "default": 1
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "description": "PodDisruptionBudget configuration for high availability",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "minAvailable": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+%$"},
+            {"type": "null"}
+          ],
+          "description": "Minimum number of available pods"
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "string", "pattern": "^[0-9]+%$"},
+            {"type": "null"}
+          ],
+          "description": "Maximum number of unavailable pods"
+        },
+        "unhealthyPodEvictionPolicy": {
+          "type": ["string", "null"],
+          "enum": ["IfHealthyBudget", "AlwaysAllow", null],
+          "description": "Policy for evicting unhealthy pods (requires Kubernetes 1.26+)"
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 30,
+      "description": "Termination grace period in seconds"
+    },
+    "healthProbes": {
+      "type": "object",
+      "description": "Health probes configuration",
+      "properties": {
+        "startupProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 12
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 15
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 5
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            }
+          }
+        }
+      }
     },
     "service": {
       "type": "object",
@@ -213,6 +444,13 @@
         "healthPort": {
           "type": "integer",
           "default": 8081
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Service annotations (e.g., Prometheus scraping)"
         }
       }
     },
@@ -240,6 +478,37 @@
         "enabled": {
           "type": "boolean",
           "default": false
+        },
+        "ingress": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "array",
+              "description": "Allow ingress from specific namespaces/pods"
+            }
+          }
+        },
+        "cloudflareIpRanges": {
+          "type": "object",
+          "description": "Cloudflare IP ranges for egress NetworkPolicy",
+          "properties": {
+            "ipv4": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+              },
+              "description": "IPv4 CIDR ranges"
+            },
+            "ipv6": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F:]+/[0-9]{1,3}$"
+              },
+              "description": "IPv6 CIDR ranges"
+            }
+          }
         }
       }
     },

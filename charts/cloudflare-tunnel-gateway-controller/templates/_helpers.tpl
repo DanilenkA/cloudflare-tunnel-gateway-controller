@@ -82,3 +82,34 @@ Create the name of the secret to use for tunnel token
 {{- include "cf-tunnel-gw-ctrl.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Validate required configuration
+*/}}
+{{- define "cf-tunnel-gw-ctrl.validateConfig" -}}
+{{- if not .Values.cloudflare.tunnelId }}
+{{- fail "ERROR: cloudflare.tunnelId is required. Get it from: Zero Trust Dashboard > Networks > Tunnels" }}
+{{- end }}
+{{- if and (not .Values.cloudflare.apiToken) (not .Values.cloudflare.apiTokenSecretName) }}
+{{- fail "ERROR: Either cloudflare.apiToken or cloudflare.apiTokenSecretName must be set" }}
+{{- end }}
+{{- if and .Values.manageCloudflared.enabled (not .Values.manageCloudflared.tunnelToken) (not .Values.manageCloudflared.tunnelTokenSecretName) }}
+{{- fail "ERROR: When manageCloudflared.enabled=true, either tunnelToken or tunnelTokenSecretName must be set" }}
+{{- end }}
+{{- end }}
+
+{{/*
+Validate PodDisruptionBudget configuration
+*/}}
+{{- define "cf-tunnel-gw-ctrl.validatePDB" -}}
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- if and .Values.podDisruptionBudget.minAvailable .Values.podDisruptionBudget.maxUnavailable }}
+{{- fail "ERROR: Cannot set both podDisruptionBudget.minAvailable and podDisruptionBudget.maxUnavailable. Use only one." }}
+{{- end }}
+{{- if and (eq (.Values.replicaCount | int) 1) .Values.podDisruptionBudget.minAvailable }}
+{{- if or (eq (.Values.podDisruptionBudget.minAvailable | toString) "1") (eq (.Values.podDisruptionBudget.minAvailable | toString) "100%") }}
+{{- fail "ERROR: PodDisruptionBudget with minAvailable=1 (or 100%) and replicaCount=1 will block all pod evictions. Set minAvailable=0, use maxUnavailable=1, or increase replicaCount to 2+" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -75,3 +75,117 @@ tests:
             port: 9091
             targetPort: health
             protocol: TCP
+
+  - it: should have correct labels
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: cloudflare-tunnel-gateway-controller
+      - template: service.yaml
+        equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+
+  - it: should select correct pods
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: cloudflare-tunnel-gateway-controller
+      - template: service.yaml
+        equal:
+          path: spec.selector["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+
+  - it: should use NodePort type when specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      service:
+        type: NodePort
+    asserts:
+      - template: service.yaml
+        equal:
+          path: spec.type
+          value: NodePort
+
+  - it: should use LoadBalancer type when specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      service:
+        type: LoadBalancer
+    asserts:
+      - template: service.yaml
+        equal:
+          path: spec.type
+          value: LoadBalancer
+
+  - it: should work with fullnameOverride
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      fullnameOverride: "custom-service"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: metadata.name
+          value: custom-service
+
+  - it: should work with nameOverride
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      nameOverride: "short-name"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: metadata.name
+          value: RELEASE-NAME-short-name
+
+  - it: should not have annotations by default
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+    asserts:
+      - template: service.yaml
+        notExists:
+          path: metadata.annotations
+
+  - it: should add annotations when specified
+    set:
+      cloudflare:
+        tunnelId: "test-tunnel-id"
+        apiToken: "test-api-token"
+      service:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+    asserts:
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/scrape"]
+          value: "true"
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "8080"
+      - template: service.yaml
+        equal:
+          path: metadata.annotations["prometheus.io/path"]
+          value: "/metrics"
