@@ -1,3 +1,5 @@
+{{- include "cf-tunnel-gw-ctrl.validateConfig" . -}}
+{{- include "cf-tunnel-gw-ctrl.validatePDB" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -91,28 +93,40 @@ spec:
             - name: health
               containerPort: {{ .Values.service.healthPort }}
               protocol: TCP
+          {{- if .Values.healthProbes.startupProbe.enabled }}
           startupProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.healthPort }}
-            initialDelaySeconds: 0
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 12
+            initialDelaySeconds: {{ .Values.healthProbes.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthProbes.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.healthProbes.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
               path: /healthz
               port: {{ .Values.service.healthPort }}
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.healthProbes.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthProbes.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.healthProbes.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: {{ .Values.service.healthPort }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.healthProbes.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthProbes.readinessProbe.periodSeconds }}
+            {{- if .Values.healthProbes.readinessProbe.timeoutSeconds }}
+            timeoutSeconds: {{ .Values.healthProbes.readinessProbe.timeoutSeconds }}
+            {{- end }}
+            {{- if .Values.healthProbes.readinessProbe.failureThreshold }}
+            failureThreshold: {{ .Values.healthProbes.readinessProbe.failureThreshold }}
+            {{- end }}
+          {{- end }}
           {{- if .Values.awg.secretName }}
           lifecycle:
             preStop:
@@ -121,14 +135,27 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    set -e
+                    set +e
                     interface="{{ .Values.awg.interfaceName | default "awg-cfd-gw-ctrl0" }}"
+                    echo "AWG cleanup: checking interface $interface"
+
+                    if ! command -v ip > /dev/null 2>&1; then
+                      echo "WARNING: ip command not found, skipping AWG interface cleanup"
+                      exit 0
+                    fi
+
                     if ip link show "$interface" > /dev/null 2>&1; then
                       echo "Deleting AWG interface: $interface"
-                      ip link delete "$interface"
+                      if ip link delete "$interface"; then
+                        echo "Successfully deleted AWG interface: $interface"
+                      else
+                        echo "WARNING: Failed to delete AWG interface $interface, continuing shutdown"
+                      fi
                     else
                       echo "AWG interface $interface not found, skipping deletion"
                     fi
+
+                    exit 0
           {{- end }}
           resources:
             {{- if .Values.resources }}

@@ -5,13 +5,11 @@
   "properties": {
     "cloudflare": {
       "type": "object",
-      "required": ["tunnelId"],
       "description": "Cloudflare configuration",
       "properties": {
         "tunnelId": {
           "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9-]+$",
+          "pattern": "^[a-zA-Z0-9-]*$",
           "description": "Cloudflare Tunnel ID (required at install time)"
         },
         "accountId": {
@@ -338,6 +336,99 @@
       "default": 30,
       "description": "Termination grace period in seconds"
     },
+    "healthProbes": {
+      "type": "object",
+      "description": "Health probes configuration",
+      "properties": {
+        "startupProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 12
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 15
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 5
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3
+            }
+          }
+        }
+      }
+    },
     "service": {
       "type": "object",
       "properties": {
@@ -394,6 +485,28 @@
             "from": {
               "type": "array",
               "description": "Allow ingress from specific namespaces/pods"
+            }
+          }
+        },
+        "cloudflareIpRanges": {
+          "type": "object",
+          "description": "Cloudflare IP ranges for egress NetworkPolicy",
+          "properties": {
+            "ipv4": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$"
+              },
+              "description": "IPv4 CIDR ranges"
+            },
+            "ipv6": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F:]+/[0-9]{1,3}$"
+              },
+              "description": "IPv6 CIDR ranges"
             }
           }
         }

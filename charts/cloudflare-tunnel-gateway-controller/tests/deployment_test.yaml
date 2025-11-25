@@ -218,7 +218,7 @@ tests:
       - template: deployment.yaml
         matchRegex:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
-          pattern: "set -e"
+          pattern: "set \\+e"
       - template: deployment.yaml
         matchRegex:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
@@ -227,6 +227,10 @@ tests:
         matchRegex:
           path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
           pattern: "ip link delete"
+      - template: deployment.yaml
+        matchRegex:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command[2]
+          pattern: "exit 0"
 
   - it: should use custom interface name in preStop hook
     set:

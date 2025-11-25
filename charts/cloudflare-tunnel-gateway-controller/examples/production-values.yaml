@@ -21,7 +21,8 @@
 cloudflare:
   # Cloudflare Tunnel ID (required)
   # Get from: Zero Trust Dashboard > Networks > Tunnels
-  tunnelId: "550e8400-e29b-41d4-a716-446655440000"
+  # Replace with your actual tunnel ID
+  tunnelId: "YOUR_TUNNEL_ID_HERE"
 
   # Use external secret for API token (recommended for production)
   # See examples/external-secrets-operator.yaml for ESO integration
