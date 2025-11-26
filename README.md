@@ -5,6 +5,8 @@
 [![Release](https://img.shields.io/github/v/release/lexfrei/cloudflare-tunnel-gateway-controller)](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/releases)
 [![CI](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/pr.yaml/badge.svg)](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/actions/workflows/pr.yaml)
 
+> **Note:** The Helm chart is published to a separate OCI path (`cloudflare-tunnel-gateway-controller-chart`) because Helm CLI doesn't support OCI Image Index with `artifactType` selection. Once [helm/helm#31582](https://github.com/helm/helm/issues/31582) is resolved, the chart will be available at `oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller`.
+
 Kubernetes controller implementing Gateway API for Cloudflare Tunnel.
 
 Enables routing traffic through Cloudflare Tunnel using standard Gateway API resources (Gateway, HTTPRoute).
@@ -29,7 +31,7 @@ helm registry login ghcr.io
 
 # 3. Install the controller
 helm install cloudflare-tunnel-gateway-controller \
-  oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller/chart \
+  oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller-chart \
   --namespace cloudflare-tunnel-system \
   --create-namespace \
   --set config.tunnelID=YOUR_TUNNEL_ID \
@@ -95,7 +97,7 @@ The **Account Settings: Read** permission is required for auto-detecting the Acc
 
 ```bash
 helm install cloudflare-tunnel-gateway-controller \
-  oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller/chart \
+  oci://ghcr.io/lexfrei/cloudflare-tunnel-gateway-controller-chart \
   --namespace cloudflare-tunnel-system \
   --create-namespace \
   --values values.yaml
