@@ -164,7 +164,12 @@ func (b *GRPCBuilder) resolveBackendRef(namespace string, refs []gatewayv1.GRPCB
 		return ""
 	}
 
-	ref := refs[0].BackendRef
+	selectedIdx := SelectHighestWeightIndex(wrapGRPCBackendRefs(refs))
+	if selectedIdx == -1 {
+		return "" // All backends disabled (weight=0)
+	}
+
+	ref := refs[selectedIdx].BackendRef
 
 	if ref.Group != nil && *ref.Group != "" && *ref.Group != backendGroupCore {
 		return ""
