@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/cloudflare/cloudflare-go/v6"
@@ -76,7 +77,17 @@ func (b *GRPCBuilder) Build(routes []gatewayv1.GRPCRoute) []zero_trust.TunnelClo
 	return rules
 }
 
-//nolint:dupl // similar structure for different route types is intentional
+// logUnsupportedGRPCHeaders logs info messages for unsupported GRPCRouteMatch header features.
+func logUnsupportedGRPCHeaders(namespace, name string, headers []gatewayv1.GRPCHeaderMatch) {
+	if len(headers) > 0 {
+		slog.Info("route configuration partially applied",
+			"route", fmt.Sprintf("%s/%s", namespace, name),
+			"reason", "header matching not supported by Cloudflare Tunnel",
+			"ignored_headers", len(headers),
+		)
+	}
+}
+
 func (b *GRPCBuilder) buildRouteEntries(route *gatewayv1.GRPCRoute) []routeEntry {
 	var entries []routeEntry
 
@@ -87,7 +98,16 @@ func (b *GRPCBuilder) buildRouteEntries(route *gatewayv1.GRPCRoute) []routeEntry
 
 	for _, hostname := range hostnames {
 		for _, rule := range route.Spec.Rules {
-			service := b.resolveBackendRef(route.Namespace, rule.BackendRefs)
+			// Warn if filters are specified (not supported)
+			if len(rule.Filters) > 0 {
+				slog.Info("route configuration partially applied",
+					"route", fmt.Sprintf("%s/%s", route.Namespace, route.Name),
+					"reason", "filters not supported by Cloudflare Tunnel",
+					"ignored_filters", len(rule.Filters),
+				)
+			}
+
+			service := b.resolveBackendRef(route.Namespace, route.Name, rule.BackendRefs)
 			if service == "" {
 				continue
 			}
@@ -104,6 +124,8 @@ func (b *GRPCBuilder) buildRouteEntries(route *gatewayv1.GRPCRoute) []routeEntry
 			}
 
 			for _, match := range rule.Matches {
+				logUnsupportedGRPCHeaders(route.Namespace, route.Name, match.Headers)
+
 				path, priority := b.extractGRPCPath(match.Method)
 				entries = append(entries, routeEntry{
 					hostname: string(hostname),
@@ -158,11 +180,29 @@ func (b *GRPCBuilder) extractGRPCPath(methodMatch *gatewayv1.GRPCMethodMatch) (p
 	return "/" + service + "/" + method, 1
 }
 
+// logGRPCBackendWeights logs info messages for GRPC backends with non-default weights.
+func logGRPCBackendWeights(namespace, routeName string, refs []gatewayv1.GRPCBackendRef) {
+	for i, backendRef := range refs {
+		if backendRef.Weight != nil && *backendRef.Weight != 1 {
+			slog.Info("route configuration partially applied",
+				"route", fmt.Sprintf("%s/%s", namespace, routeName),
+				"reason", "backendRef weight ignored, traffic splitting not supported",
+				"backend", string(backendRef.Name),
+				"backend_index", i,
+				"weight", *backendRef.Weight,
+			)
+		}
+	}
+}
+
 //nolint:dupl // similar structure for different route types is intentional
-func (b *GRPCBuilder) resolveBackendRef(namespace string, refs []gatewayv1.GRPCBackendRef) string {
+func (b *GRPCBuilder) resolveBackendRef(namespace, routeName string, refs []gatewayv1.GRPCBackendRef) string {
 	if len(refs) == 0 {
 		return ""
 	}
+
+	logMultipleBackends(namespace, routeName, len(refs))
+	logGRPCBackendWeights(namespace, routeName, refs)
 
 	selectedIdx := SelectHighestWeightIndex(wrapGRPCBackendRefs(refs))
 	if selectedIdx == -1 {
