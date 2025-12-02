@@ -1,10 +1,13 @@
 # Architecture
 
-This document describes the internal architecture of the Cloudflare Tunnel Gateway Controller.
+This document describes the internal architecture of the Cloudflare Tunnel
+Gateway Controller.
 
 ## High-Level Overview
 
-The controller implements the Kubernetes Gateway API to configure Cloudflare Tunnel ingress rules. It watches Gateway and HTTPRoute resources and translates them into Cloudflare Tunnel configuration via the Cloudflare API.
+The controller implements the Kubernetes Gateway API to configure Cloudflare
+Tunnel ingress rules. It watches Gateway and HTTPRoute resources and translates
+them into Cloudflare Tunnel configuration via the Cloudflare API.
 
 ```mermaid
 flowchart TB
@@ -63,11 +66,12 @@ internal/
 
 ### GatewayClassConfig
 
-Cluster-scoped Custom Resource Definition (CRD) that provides tunnel configuration:
+Cluster-scoped Custom Resource Definition (CRD) that provides tunnel
+configuration:
 
 - **API Group**: `cf.k8s.lex.la/v1alpha1`
 - **Referenced by**: GatewayClass via `spec.parametersRef`
-- **Configuration**: Cloudflare credentials, tunnel ID, cloudflared settings, AWG sidecar
+- **Configuration**: Cloudflare credentials, tunnel ID, cloudflared settings
 
 ```yaml
 apiVersion: cf.k8s.lex.la/v1alpha1
@@ -221,7 +225,8 @@ flowchart TB
 
 The controller follows these error handling patterns:
 
-1. **Retryable Errors**: Return `ctrl.Result{Requeue: true}` for transient failures
+1. **Retryable Errors**: Return `ctrl.Result{Requeue: true}` for transient
+   failures
 2. **Permanent Errors**: Log error and update resource status condition
 3. **API Errors**: Wrapped with context using `cockroachdb/errors`
 4. **Not Found**: Silently ignore (resource was deleted)
@@ -252,7 +257,17 @@ flowchart LR
 
 ## Security Considerations
 
-- **API Token**: Stored in Kubernetes Secret, mounted as environment variable
-- **RBAC**: Minimal permissions following least-privilege principle
-- **Network**: Controller only needs egress to Cloudflare API
-- **Container**: Runs as non-root user (UID 65534) with read-only filesystem
+| Aspect | Implementation |
+|--------|----------------|
+| **API Token** | Stored in Kubernetes Secret, mounted as environment variable |
+| **RBAC** | Minimal permissions following least-privilege principle |
+| **Network** | Controller only needs egress to Cloudflare API |
+| **Container** | Runs as non-root user (UID 65534) with read-only filesystem |
+
+## Key Dependencies
+
+- `sigs.k8s.io/controller-runtime` - Kubernetes controller framework
+- `sigs.k8s.io/gateway-api` - Gateway API types
+- `github.com/cloudflare/cloudflare-go/v4` - Cloudflare API client
+- `helm.sh/helm/v3` - Helm SDK for cloudflared deployment
+- `github.com/cockroachdb/errors` - Error wrapping

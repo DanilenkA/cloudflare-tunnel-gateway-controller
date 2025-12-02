@@ -1,4 +1,4 @@
-# Metrics and Monitoring
+# Metrics & Alerting
 
 The controller exposes Prometheus metrics for monitoring and alerting.
 
@@ -11,8 +11,6 @@ The controller exposes Prometheus metrics for monitoring and alerting.
 | `/readyz` | 8081 | Readiness probe |
 
 ## Available Metrics
-
-The controller exposes standard controller-runtime metrics plus Go runtime metrics.
 
 ### Controller Metrics
 
@@ -78,7 +76,7 @@ spec:
 
 ```yaml
 scrape_configs:
-  - job_name: 'cloudflare-tunnel-gateway-controller'
+  - job_name: cloudflare-tunnel-gateway-controller
     kubernetes_sd_configs:
       - role: endpoints
         namespaces:
@@ -93,7 +91,7 @@ scrape_configs:
         regex: metrics
 ```
 
-## Useful Queries
+## PromQL Queries
 
 ### Reconciliation Rate
 
@@ -136,7 +134,7 @@ histogram_quantile(0.99,
 # Queue depth (should be low)
 workqueue_depth{name=~".*gateway.*|.*httproute.*"}
 
-# Items waiting in queue
+# Average time in queue
 sum(workqueue_queue_duration_seconds_sum) by (name)
 /
 sum(workqueue_queue_duration_seconds_count) by (name)
@@ -162,8 +160,6 @@ go_goroutines{job="cloudflare-tunnel-gateway-controller"}
 
 ## Alerting Rules
 
-### PrometheusRule (Prometheus Operator)
-
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -174,7 +170,6 @@ spec:
   groups:
     - name: cloudflare-tunnel-gateway-controller
       rules:
-        # High error rate
         - alert: CloudflareTunnelControllerHighErrorRate
           expr: |
             sum(rate(controller_runtime_reconcile_errors_total[5m])) by (controller)
@@ -188,7 +183,6 @@ spec:
             summary: "High reconciliation error rate"
             description: "Controller {{ $labels.controller }} has error rate {{ $value | humanizePercentage }}"
 
-        # Reconciliation taking too long
         - alert: CloudflareTunnelControllerSlowReconciliation
           expr: |
             histogram_quantile(0.99,
@@ -201,7 +195,6 @@ spec:
             summary: "Slow reconciliation"
             description: "Controller {{ $labels.controller }} P99 latency is {{ $value | humanizeDuration }}"
 
-        # Queue backing up
         - alert: CloudflareTunnelControllerQueueBacklog
           expr: workqueue_depth{name=~".*gateway.*|.*httproute.*"} > 100
           for: 5m
@@ -211,7 +204,6 @@ spec:
             summary: "Workqueue backlog"
             description: "Queue {{ $labels.name }} has {{ $value }} items pending"
 
-        # Controller not running
         - alert: CloudflareTunnelControllerDown
           expr: up{job="cloudflare-tunnel-gateway-controller"} == 0
           for: 2m
@@ -221,7 +213,6 @@ spec:
             summary: "Controller is down"
             description: "Cloudflare Tunnel Gateway Controller is not responding"
 
-        # High memory usage
         - alert: CloudflareTunnelControllerHighMemory
           expr: |
             process_resident_memory_bytes{job="cloudflare-tunnel-gateway-controller"}
@@ -236,7 +227,7 @@ spec:
 
 ## Grafana Dashboard
 
-Import this dashboard JSON or use as reference:
+Example dashboard panels:
 
 ```json
 {
@@ -257,8 +248,8 @@ Import this dashboard JSON or use as reference:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(controller_runtime_reconcile_errors_total[5m])) by (controller) / sum(rate(controller_runtime_reconcile_total[5m])) by (controller) * 100",
-          "legendFormat": "{{ controller }}"
+          "expr": "sum(rate(controller_runtime_reconcile_errors_total[5m])) / sum(rate(controller_runtime_reconcile_total[5m])) * 100",
+          "legendFormat": "error rate"
         }
       ]
     },
@@ -322,16 +313,12 @@ curl http://localhost:8081/healthz
 # Returns: ok
 ```
 
-The liveness probe indicates the controller process is running.
-
 ### Readiness Probe
 
 ```bash
 curl http://localhost:8081/readyz
 # Returns: ok
 ```
-
-The readiness probe indicates the controller is ready to process requests.
 
 ### Kubernetes Configuration
 

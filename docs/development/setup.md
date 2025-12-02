@@ -1,6 +1,7 @@
-# Development Guide
+# Development Setup
 
-This guide covers setting up a development environment for the Cloudflare Tunnel Gateway Controller.
+This guide covers setting up a development environment for the Cloudflare Tunnel
+Gateway Controller.
 
 ## Prerequisites
 
@@ -80,7 +81,7 @@ export CF_API_TOKEN="your-api-token"
 
 ```bash
 # Install Gateway API CRDs
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+kubectl apply --filename https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 
 # Create namespace
 kubectl create namespace cloudflare-tunnel-system
@@ -91,41 +92,12 @@ kubectl create secret generic cloudflare-credentials \
   --from-literal=api-token="${CF_API_TOKEN}"
 
 # Apply RBAC
-kubectl apply -f deploy/rbac/
+kubectl apply --filename deploy/rbac/
 
 # Run controller locally against cluster
 ./bin/controller \
   --tunnel-id="${CF_TUNNEL_ID}" \
   --log-level=debug
-```
-
-## Testing
-
-### Unit Tests
-
-```bash
-# Run all tests
-go test -v ./...
-
-# Run with race detector
-go test -race ./...
-
-# Run with coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
-
-### Helm Chart Tests
-
-```bash
-# Install helm-unittest plugin
-helm plugin install https://github.com/helm-unittest/helm-unittest
-
-# Run chart tests
-helm unittest charts/cloudflare-tunnel-gateway-controller
-
-# Lint chart
-helm lint charts/cloudflare-tunnel-gateway-controller
 ```
 
 ## Linting
@@ -143,14 +115,14 @@ golangci-lint run --timeout=5m
 golangci-lint run --fix
 ```
 
-### Linter Configuration
+### Key Linter Settings
 
-Key settings in `.golangci.yaml`:
-
-- `funlen`: Max 60 lines/statements per function
-- `gocyclo`: Max complexity 15
-- `gosec`: Security checks enabled
-- `nolintlint`: Requires explanations for `//nolint` directives
+| Linter | Setting | Description |
+|--------|---------|-------------|
+| `funlen` | max 60 | Maximum function length |
+| `gocyclo` | max 15 | Maximum cyclomatic complexity |
+| `gosec` | enabled | Security checks |
+| `nolintlint` | enabled | Requires `//nolint` explanations |
 
 ## Debugging
 
@@ -164,16 +136,18 @@ Key settings in `.golangci.yaml`:
 
 ```bash
 # Check Gateway status
-kubectl get gateway -A -o yaml
+kubectl get gateway --all-namespaces --output yaml
 
 # Check HTTPRoute status
-kubectl get httproute -A -o yaml
+kubectl get httproute --all-namespaces --output yaml
 
 # Check controller logs
-kubectl logs -n cloudflare-tunnel-system deployment/cloudflare-tunnel-gateway-controller
+kubectl logs --namespace cloudflare-tunnel-system \
+  deployment/cloudflare-tunnel-gateway-controller
 
 # Check events
-kubectl get events -n cloudflare-tunnel-system --sort-by='.lastTimestamp'
+kubectl get events --namespace cloudflare-tunnel-system \
+  --sort-by='.lastTimestamp'
 ```
 
 ### Debug with Delve
@@ -219,36 +193,21 @@ Settings (`.vscode/settings.json`):
    - Add environment variables: `CF_TUNNEL_ID`, `CF_API_TOKEN`
    - Set working directory to project root
 
-## Project Structure
-
-```text
-.
-├── cmd/controller/       # Main entry point
-├── internal/
-│   ├── controller/       # Kubernetes controllers
-│   ├── ingress/          # Route → Cloudflare conversion
-│   └── helm/             # Helm SDK integration
-├── charts/               # Helm chart
-├── deploy/               # Raw Kubernetes manifests
-├── docs/                 # Documentation
-└── .github/              # CI/CD workflows
-```
-
 ## Common Tasks
 
 ### Add a New Flag
 
 1. Add flag in `cmd/controller/cmd/root.go`:
 
-   ```go
-   rootCmd.Flags().String("my-flag", "default", "Description")
-   ```
+    ```go
+    rootCmd.Flags().String("my-flag", "default", "Description")
+    ```
 
 2. Add viper binding and default:
 
-   ```go
-   viper.SetDefault("my-flag", "default")
-   ```
+    ```go
+    viper.SetDefault("my-flag", "default")
+    ```
 
 3. Add to `controller.Config` struct in `internal/controller/manager.go`
 
@@ -262,18 +221,21 @@ go get -u ./...
 go mod tidy
 
 # Update specific dependency
-go get -u github.com/cloudflare/cloudflare-go/v6@latest
+go get -u github.com/cloudflare/cloudflare-go/v4@latest
 go mod tidy
 ```
 
 ### Helm Chart Versioning
 
-**Do not manually bump `version` or `appVersion` in `Chart.yaml`.** The release workflow automatically sets both values based on the release tag. Manual version changes will cause conflicts.
+!!! warning "Do Not Manually Bump Versions"
+
+    Do not manually change `version` or `appVersion` in `Chart.yaml`.
+    The release workflow automatically sets both values based on the
+    release tag. Manual changes will cause conflicts.
 
 ### Generate Godoc
 
 ```bash
-# View locally
 godoc -http=:6060
 # Open http://localhost:6060/pkg/github.com/lexfrei/cloudflare-tunnel-gateway-controller/
 ```

@@ -1,7 +1,13 @@
-# AmneziaWG Quick Start Guide
+# AmneziaWG Sidecar
 
-This guide walks you through setting up Cloudflare Tunnel with AmneziaWG (AWG) sidecar
-for traffic obfuscation.
+This guide walks you through setting up Cloudflare Tunnel with AmneziaWG (AWG)
+sidecar for traffic obfuscation.
+
+## Why AWG?
+
+AmneziaWG routes cloudflared traffic through an obfuscated WireGuard tunnel,
+making it harder to detect and block Cloudflare Tunnel connections in
+restricted networks.
 
 ## Prerequisites
 
@@ -9,12 +15,11 @@ for traffic obfuscation.
 - Cloudflare Tunnel created in Zero Trust Dashboard
 - AWG server configured and accessible
 
-> **Warning:** AWG configuration contains unique client identity (private key, address). Running multiple replicas with the same config will cause connection conflicts. Currently only single replica deployments are supported. If you need high availability, please [open an issue](https://github.com/lexfrei/cloudflare-tunnel-gateway-controller/issues).
+!!! warning "Single Replica Limitation"
 
-## Why AWG?
-
-AmneziaWG routes cloudflared traffic through an obfuscated WireGuard tunnel,
-making it harder to detect and block Cloudflare Tunnel connections in restricted networks.
+    AWG configuration contains unique client identity (private key, address).
+    Running multiple replicas with the same config will cause connection
+    conflicts. Currently only single replica deployments are supported.
 
 ## Step 1: Create Namespace
 
@@ -44,9 +49,7 @@ kubectl create secret generic cloudflare-tunnel-token \
 
 ### AWG Configuration
 
-Create `awg.conf` file with your AWG server configuration.
-
-**IMPORTANT**: AllowedIPs MUST include ALL Cloudflare IP ranges from <https://www.cloudflare.com/ips/>
+Create `awg.conf` file with your AWG server configuration:
 
 ```ini
 [Interface]
@@ -71,6 +74,12 @@ AllowedIPs = 173.245.48.0/20, 103.21.244.0/22, 103.22.200.0/22, 103.31.4.0/22, 1
 Endpoint = your-awg-server:port
 PersistentKeepalive = 25
 ```
+
+!!! danger "AllowedIPs Critical"
+
+    AllowedIPs MUST include ALL Cloudflare IP ranges from
+    <https://www.cloudflare.com/ips/>. Missing ranges will cause
+    connection failures.
 
 Then create the secret:
 
@@ -120,9 +129,10 @@ helm install cloudflare-tunnel-gateway-controller \
   --values awg-values.yaml
 ```
 
-## Step 4: Create Gateway
+## Step 4: Create Gateway and HTTPRoute
 
 ```yaml
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -137,11 +147,7 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-```
-
-## Step 5: Create HTTPRoute
-
-```yaml
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -163,12 +169,16 @@ spec:
 
 AWG sidecar requires elevated privileges:
 
-- `runAsUser: 0` (root) for network interface creation
-- `NET_ADMIN` capability for WireGuard interface management
-- `allowPrivilegeEscalation: true` for capability elevation
+| Setting | Value | Reason |
+|---------|-------|--------|
+| `runAsUser` | `0` | Root required for network interface creation |
+| `NET_ADMIN` | Required | WireGuard interface management |
+| `allowPrivilegeEscalation` | `true` | Capability elevation |
 
-These permissions are only needed for the cloudflared pod with AWG sidecar,
-not for the controller itself.
+!!! note "Scope of Elevated Privileges"
+
+    These permissions are only needed for the cloudflared pod with AWG
+    sidecar, not for the controller itself.
 
 ## Troubleshooting
 
@@ -177,7 +187,8 @@ not for the controller itself.
 Check that NET_ADMIN capability is granted:
 
 ```bash
-kubectl get pod -n cloudflare-tunnel-system -l app=cloudflared -o yaml | grep -A5 capabilities
+kubectl get pod --namespace cloudflare-tunnel-system \
+  --selector app=cloudflared --output yaml | grep -A5 capabilities
 ```
 
 ### Tunnel not connecting
@@ -185,7 +196,8 @@ kubectl get pod -n cloudflare-tunnel-system -l app=cloudflared -o yaml | grep -A
 Verify AllowedIPs includes all Cloudflare IP ranges:
 
 ```bash
-kubectl get secret awg-config -n cloudflare-tunnel-system -o jsonpath='{.data.wg0\.conf}' | base64 -d | grep AllowedIPs
+kubectl get secret awg-config --namespace cloudflare-tunnel-system \
+  --output jsonpath='{.data.wg0\.conf}' | base64 -d | grep AllowedIPs
 ```
 
 Compare with current Cloudflare ranges: <https://www.cloudflare.com/ips/>
@@ -195,17 +207,46 @@ Compare with current Cloudflare ranges: <https://www.cloudflare.com/ips/>
 AWG sidecar preserves cluster DNS configuration. Verify DNS is working:
 
 ```bash
-kubectl exec -n cloudflare-tunnel-system deploy/cloudflared -- nslookup kubernetes.default.svc.cluster.local
+kubectl exec --namespace cloudflare-tunnel-system \
+  deploy/cloudflared -- nslookup kubernetes.default.svc.cluster.local
 ```
 
 ### Check AWG sidecar logs
 
 ```bash
-kubectl logs -n cloudflare-tunnel-system deploy/cloudflared -c awg-sidecar
+kubectl logs --namespace cloudflare-tunnel-system \
+  deploy/cloudflared --container awg-sidecar
 ```
 
 ### Check cloudflared logs
 
 ```bash
-kubectl logs -n cloudflare-tunnel-system deploy/cloudflared -c cloudflared
+kubectl logs --namespace cloudflare-tunnel-system \
+  deploy/cloudflared --container cloudflared
 ```
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Pod["cloudflared Pod"]
+        CFD[cloudflared]
+        AWG[AWG Sidecar]
+    end
+
+    subgraph Network
+        WG[AWG Server]
+        CF[Cloudflare Edge]
+    end
+
+    CFD -->|traffic| AWG
+    AWG -->|obfuscated| WG
+    WG -->|decrypted| CF
+```
+
+Traffic flow:
+
+1. cloudflared sends traffic to AWG sidecar
+2. AWG sidecar encrypts and obfuscates traffic
+3. Traffic is sent to AWG server
+4. AWG server decrypts and forwards to Cloudflare
